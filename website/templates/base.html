@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title or "Monitor Monotributo" }}</title>
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/analisys.png') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="page">
+  <div class="bg-layer"></div>
+  <header class="topbar">
+    <div class="topbar__row">
+      <div class="brand">
+        <span class="brand__dot"></span>
+        <div>
+          <div class="brand__title">Monitor Monotributo</div>
+          <div class="brand__subtitle">Control de facturacion anual</div>
+        </div>
+      </div>
+      {% block header_row_content %}{% endblock %}
+      {% if current_user.is_authenticated %}
+        <nav class="topbar__actions">
+          <a class="ghost-link" href="#">Ayuda</a>
+          <a class="primary-link" href="{{ url_for('auth.logout') }}">Salir</a>
+        </nav>
+      {% endif %}
+    </div>
+    {% block header_content %}{% endblock %}
+  </header>
+
+  <main class="content">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flash-stack">
+          {% for category, message in messages %}
+            <div class="flash flash--{{ category }}">{{ message }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+  <div class="modal modal--confirm" id="confirmModal" aria-hidden="true">
+    <div class="modal__content">
+      <div class="modal__header">
+        <h3>Confirmar accion</h3>
+        <button class="modal__close" type="button" data-close>&times;</button>
+      </div>
+      <p id="confirmMessage">Seguro que deseas continuar?</p>
+      <div class="modal__actions">
+        <button class="ghost-button" type="button" data-close>Cancelar</button>
+        <button class="primary" type="button" id="confirmOk">Confirmar</button>
+      </div>
+    </div>
+  </div>
+  <script>
+    const confirmModal = document.getElementById("confirmModal");
+    const confirmMessage = document.getElementById("confirmMessage");
+    const confirmOk = document.getElementById("confirmOk");
+    let pendingAction = null;
+
+    const openConfirm = (message, action) => {
+      confirmMessage.textContent = message || "Seguro que deseas continuar?";
+      pendingAction = action;
+      confirmModal.setAttribute("aria-hidden", "false");
+      confirmModal.classList.add("is-open");
+    };
+
+    const closeConfirm = () => {
+      confirmModal.classList.remove("is-open");
+      confirmModal.setAttribute("aria-hidden", "true");
+      pendingAction = null;
+    };
+
+    document.addEventListener("click", (event) => {
+      const link = event.target.closest("a[data-confirm]");
+      if (!link) {
+        return;
+      }
+      event.preventDefault();
+      const message = link.dataset.confirm || "Confirmar accion?";
+      openConfirm(message, () => {
+        window.location.href = link.href;
+      });
+    });
+
+    document.addEventListener("submit", (event) => {
+      const form = event.target.closest("form[data-confirm]");
+      if (!form) {
+        return;
+      }
+      event.preventDefault();
+      const message = form.dataset.confirm || "Confirmar accion?";
+      openConfirm(message, () => {
+        form.submit();
+      });
+    });
+
+    confirmOk.addEventListener("click", () => {
+      if (pendingAction) {
+        pendingAction();
+      }
+      closeConfirm();
+    });
+
+    confirmModal.addEventListener("click", (event) => {
+      if (event.target === confirmModal) {
+        closeConfirm();
+      }
+    });
+
+    confirmModal.querySelectorAll("[data-close]").forEach((button) => {
+      button.addEventListener("click", closeConfirm);
+    });
+
+    const flashSuccess = document.querySelectorAll(".flash--success");
+    flashSuccess.forEach((message) => {
+      setTimeout(() => {
+        message.classList.add("is-hidden");
+      }, 2000);
+      setTimeout(() => {
+        message.remove();
+      }, 2600);
+    });
+  </script>
+</body>
+</html>

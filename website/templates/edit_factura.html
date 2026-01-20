@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="form-page">
+  <div class="form-card">
+    <h1>Editar factura</h1>
+    <form method="post" class="panel__form" data-confirm="Confirmar guardado de la factura?">
+      <div class="form-grid">
+        <label class="field">
+          Facturador
+          <select name="monotributista_id" required>
+            {% for item in monotributistas %}
+              <option value="{{ item.id }}" {% if item.id == factura.monotributista_id %}selected{% endif %}>{{ item.razon_social }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="field">
+          Fecha
+          <input type="date" name="fecha" value="{{ factura.fecha.isoformat() }}" required>
+        </label>
+        <label class="field">
+          Tipo de comp
+          <input type="text" name="tipo_comp" value="{{ factura.tipo_comp }}" required>
+        </label>
+        <label class="field">
+          Punto de venta
+          <input type="text" name="punto_venta" value="{{ punto_venta_value }}" required>
+        </label>
+        <label class="field">
+          Nro de comprobante
+          <input type="text" name="nro_comp" value="{{ nro_comp_value }}" required>
+        </label>
+        <label class="field">
+          CUIT Receptor
+          <input type="text" name="cuit_receptor" value="{{ factura.cuit_receptor or '' }}">
+        </label>
+        <label class="field">
+          Razon Social Receptor
+          <input type="text" name="razon_social_receptor" value="{{ factura.razon_social_receptor or '' }}">
+        </label>
+        <label class="field">
+          Importe total
+          <input type="text" name="importe_total" value="{{ importe_value }}" required>
+        </label>
+        <label class="field">
+          Fecha DESDE
+          <input type="date" name="fecha_desde" value="{{ factura.fecha_desde.isoformat() if factura.fecha_desde else '' }}">
+        </label>
+        <label class="field">
+          Fecha HASTA
+          <input type="date" name="fecha_hasta" value="{{ factura.fecha_hasta.isoformat() if factura.fecha_hasta else '' }}">
+        </label>
+        <label class="field">
+          Concepto
+          <input type="text" name="concepto" value="{{ factura.concepto or '' }}">
+        </label>
+      </div>
+      <div class="form-actions">
+        <button class="primary" type="submit">Guardar cambios</button>
+        <a class="ghost-link" href="{{ url_for('main.dashboard', tab='facturas') }}">Volver</a>
+      </div>
+    </form>
+  </div>
+</section>
+{% endblock %}

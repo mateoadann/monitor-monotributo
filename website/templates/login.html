@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="login">
+  <div class="login__card">
+    <div class="login__header">
+      <span class="login__tag">Acceso</span>
+      <h1>Ingresar al dashboard</h1>
+      <p>Usa tu usuario y contrasena para continuar.</p>
+    </div>
+    <form class="login__form" method="post">
+      <label>
+        Usuario
+        <input type="text" name="username" placeholder="admin" required>
+      </label>
+      <label>
+        Contrasena
+        <input type="password" name="password" placeholder="admin" required>
+      </label>
+      {% if error %}
+        <div class="alert">{{ error }}</div>
+      {% endif %}
+      <button type="submit">Ingresar</button>
+    </form>
+    <div class="login__hint">Demo: usuario <strong>admin</strong> / contrasena <strong>admin</strong></div>
+  </div>
+  <div class="login__aside">
+    <div class="pulse-card">
+      <h2>Monitor en tiempo real</h2>
+      <p>Visualiza el acumulado anual, detecta saltos de categoria y prepara recategorizaciones sin friccion.</p>
+      <div class="pulse-bars">
+        <span style="--h: 42%"></span>
+        <span style="--h: 68%"></span>
+        <span style="--h: 52%"></span>
+        <span style="--h: 81%"></span>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

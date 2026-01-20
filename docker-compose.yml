@@ -1,0 +1,12 @@
+version: "3.9"
+
+services:
+  web:
+    build: .
+    ports:
+      - "5001:5000"
+    environment:
+      DATABASE_URL: sqlite:////app/monitor.db
+      SECRET_KEY: dev-change-me
+    volumes:
+      - ./monitor.db:/app/monitor.db

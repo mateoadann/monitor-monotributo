@@ -1,0 +1,590 @@
+{% extends "base.html" %}
+{% block header_row_content %}
+<div class="hero__stats hero__stats--compact">
+  <div class="stat">
+    <span>Monotributistas</span>
+    <strong>{{ monotributistas | length }}</strong>
+  </div>
+  <div class="stat">
+    <span>Facturas</span>
+    <strong>{{ facturas | length }}</strong>
+  </div>
+  <div class="stat">
+    <span>Alertas</span>
+    <strong>2</strong>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+
+<section class="tabs">
+  <div class="tabs__controls">
+    <button class="tab {% if active_tab == 'monotributistas' %}is-active{% endif %}" data-tab="monotributistas">Monotributista</button>
+    <button class="tab {% if active_tab == 'facturas' %}is-active{% endif %}" data-tab="facturas">Facturas</button>
+    <button class="tab {% if active_tab == 'calculo' %}is-active{% endif %}" data-tab="calculo">Calculo</button>
+    <button class="tab {% if active_tab == 'configuracion' %}is-active{% endif %}" data-tab="configuracion">Configuracion</button>
+  </div>
+
+  <div class="tabs__panel {% if active_tab == 'monotributistas' %}is-active{% endif %}" id="monotributistas">
+    <div class="panel__header">
+      <h2>Listado de monotributistas</h2>
+      <span class="panel__hint">Gestiona datos fiscales y categorias.</span>
+    </div>
+    <div class="table-tools">
+      <label class="field field--inline">
+        Buscar
+        <input type="text" id="monoSearch" placeholder="Buscar por razon, CUIT o categoria">
+      </label>
+      <label class="field field--inline">
+        Categoria actual
+        <select id="monoCategoria">
+          <option value="">Todas</option>
+          {% for categoria in categorias %}
+            <option value="{{ categoria.nombre }}">{{ categoria.nombre }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="field field--inline">
+        Orden
+        <select id="monoOrden">
+          <option value="razon_asc">Razon social A-Z</option>
+          <option value="razon_desc">Razon social Z-A</option>
+          <option value="categoria_asc">Categoria actual A-Z</option>
+        </select>
+      </label>
+    </div>
+    <div class="panel__actions">
+      <button class="primary" type="button" data-open="monotributista">Nuevo monotributista</button>
+    </div>
+    <div class="table">
+      <div class="table__row table__head table__row--mono">
+        <span>Razon Social</span>
+        <span>CUIT</span>
+        <span>Clave Fiscal</span>
+        <span>Categoria</span>
+        <span>Categoria corresponde</span>
+        <span>Acciones</span>
+      </div>
+      {% for item in monotributistas %}
+      <div class="table__row table__row--mono" data-row="mono" data-razon="{{ item.razon_social | lower }}" data-cuit="{{ item.cuit }}" data-categoria="{{ item.categoria_actual }}" data-corresponde="{{ item.categoria_corresponde }}" data-search="{{ (item.razon_social ~ ' ' ~ item.cuit ~ ' ' ~ item.categoria_actual ~ ' ' ~ item.categoria_corresponde) | lower }}">
+        <span>{{ item.razon_social }}</span>
+        <span>{{ item.cuit }}</span>
+        <span class="secret-cell">
+          <span class="secret" data-secret="{{ item.clave_fiscal }}">********</span>
+          <button class="icon-button" type="button" data-toggle="secret" aria-label="Mostrar clave fiscal" title="Mostrar clave fiscal">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M12 5c-5 0-9 4.5-10 7 1 2.5 5 7 10 7s9-4.5 10-7c-1-2.5-5-7-10-7zm0 11a4 4 0 1 1 0-8 4 4 0 0 1 0 8z" fill="currentColor"/>
+              <circle cx="12" cy="12" r="2.5" fill="currentColor"/>
+            </svg>
+          </button>
+        </span>
+        <span>{{ item.categoria_actual }}</span>
+        <span class="badge badge--{{ item.estado_categoria }}">{{ item.categoria_corresponde }}</span>
+        <span class="row-actions">
+          <a class="icon-link" href="{{ url_for('main.edit_monotributista', monotributista_id=item.id) }}" aria-label="Editar">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M4 17.25V20h2.75l8.1-8.1-2.75-2.75-8.1 8.1zM20.7 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" fill="currentColor"/>
+            </svg>
+          </a>
+          <form method="post" action="{{ url_for('main.delete_monotributista', monotributista_id=item.id) }}" data-confirm="Confirmar eliminacion del monotributista?">
+            <button class="icon-link icon-link--danger" type="submit" aria-label="Eliminar" title="Eliminar">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M6 7h12l-1 13a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L6 7zm3-4h6l1 2H8l1-2z" fill="currentColor"/>
+              </svg>
+            </button>
+          </form>
+        </span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="tabs__panel {% if active_tab == 'facturas' %}is-active{% endif %}" id="facturas">
+    <div class="panel__header">
+      <h2>Facturas y notas de credito</h2>
+      <span class="panel__hint">Carga comprobantes y notas de credito.</span>
+    </div>
+    <div class="table-tools">
+      <label class="field field--inline">
+        Buscar
+        <input type="text" id="facturaSearch" placeholder="Buscar por CUIT, razon, comp...">
+      </label>
+      <label class="field field--inline">
+        Facturador
+        <select id="facturaFacturador">
+          <option value="">Todos</option>
+          {% for item in monotributistas_select %}
+            <option value="{{ item.razon_social }}">{{ item.razon_social }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="field field--inline">
+        Tipo
+        <select id="facturaTipo">
+          <option value="">Todos</option>
+          <option value="B">B</option>
+          <option value="NCB">NCB</option>
+        </select>
+      </label>
+      <label class="field field--inline">
+        Orden
+        <select id="facturaOrden">
+          <option value="fecha_desc">Fecha: mas reciente</option>
+          <option value="fecha_asc">Fecha: mas antigua</option>
+          <option value="importe_desc">Importe: mayor</option>
+          <option value="importe_asc">Importe: menor</option>
+        </select>
+      </label>
+    </div>
+    <div class="panel__actions">
+      <button class="primary" type="button" data-open="factura">Cargar factura</button>
+    </div>
+    <div class="table table--dense">
+      <div class="table__row table__head table__row--facturas">
+        <span>Facturador</span>
+        <span>Fecha</span>
+        <span>Tipo</span>
+        <span>Nro. Comp</span>
+        <span>CUIT Receptor</span>
+        <span>Razon Social</span>
+        <span>Importe</span>
+        <span>Desde</span>
+        <span>Hasta</span>
+        <span>Concepto</span>
+        <span>Acciones</span>
+      </div>
+      {% for item in facturas %}
+      <div class="table__row table__row--facturas" data-row="factura" data-tipo="{{ item.tipo }}" data-fecha="{{ item.fecha_iso }}" data-importe="{{ item.importe_raw }}" data-facturador="{{ item.facturador }}" data-search="{{ (item.facturador ~ ' ' ~ item.fecha ~ ' ' ~ item.tipo ~ ' ' ~ item.numero ~ ' ' ~ item.cuit_receptor ~ ' ' ~ item.razon_receptor ~ ' ' ~ item.importe ~ ' ' ~ item.desde ~ ' ' ~ item.hasta ~ ' ' ~ item.concepto) | lower }}">
+        <span>{{ item.facturador }}</span>
+        <span>{{ item.fecha }}</span>
+        <span>{{ item.tipo }}</span>
+        <span>{{ item.numero }}</span>
+        <span>{{ item.cuit_receptor }}</span>
+        <span>{{ item.razon_receptor }}</span>
+        <span>{{ item.importe }}</span>
+        <span>{{ item.desde }}</span>
+        <span>{{ item.hasta }}</span>
+        <span>{{ item.concepto }}</span>
+        <span class="row-actions">
+          <a class="icon-link" href="{{ url_for('main.edit_factura', factura_id=item.id) }}" aria-label="Editar">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M4 17.25V20h2.75l8.1-8.1-2.75-2.75-8.1 8.1zM20.7 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" fill="currentColor"/>
+            </svg>
+          </a>
+          <form method="post" action="{{ url_for('main.delete_factura', factura_id=item.id) }}" data-confirm="Confirmar eliminacion de la factura?">
+            <button class="icon-link icon-link--danger" type="submit" aria-label="Eliminar" title="Eliminar">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M6 7h12l-1 13a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L6 7zm3-4h6l1 2H8l1-2z" fill="currentColor"/>
+              </svg>
+            </button>
+          </form>
+        </span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="tabs__panel {% if active_tab == 'calculo' %}is-active{% endif %}" id="calculo">
+    <div class="panel__header">
+      <div>
+        <h2>Calculo de facturacion anual</h2>
+        <p>Selecciona un monotributista para ver el detalle mensual.</p>
+      </div>
+      <form class="selector" method="get">
+        <input type="hidden" name="tab" value="calculo">
+        <input type="hidden" name="anchor" value="{{ anchor_value }}">
+        <select name="monotributista" onchange="this.form.submit()">
+          {% for item in monotributistas_select %}
+            <option value="{{ item.id }}" {% if item.id == seleccionado_id %}selected{% endif %}>{{ item.razon_social }}</option>
+          {% endfor %}
+        </select>
+      </form>
+    </div>
+    {% if detalle %}
+    <div class="calculo__layout">
+      <div class="calculo__grid">
+        {% for mes, total in detalle.mensual.items() %}
+        <div class="month-card">
+          <span>{{ mes }}</span>
+          <strong>{{ total }}</strong>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="calculo__side">
+        <div class="calculo__summary">
+          <div class="summary-card">
+            <span>Categoria actual</span>
+            <strong>{{ detalle.categoria_actual }}</strong>
+          </div>
+          <div class="summary-card summary-card--{{ detalle.estado_categoria }}">
+            <span>Categoria corresponde</span>
+            <div class="summary-card__value">
+              <strong>{{ detalle.categoria_corresponde }}</strong>
+              <span class="summary-card__tope"><strong> - {{ detalle.tope_corresponde }}</strong></span>
+            </div>
+          </div>
+          <div class="summary-card">
+            <span>Total 12 meses</span>
+            <strong>{{ detalle.total_12m }}</strong>
+          </div>
+        </div>
+        <form class="calculo__period" method="get">
+          <input type="hidden" name="tab" value="calculo">
+          <input type="hidden" name="monotributista" value="{{ seleccionado_id }}">
+          <label class="field">
+            Periodo de corte
+            <input type="month" name="anchor" value="{{ anchor_value }}" required>
+          </label>
+          <button class="outline" type="submit">Ver periodo</button>
+        </form>
+      </div>
+    </div>
+    {% else %}
+    <div class="empty">
+      <h3>Sin datos</h3>
+      <p>Necesitas cargar monotributistas y facturas para ver el calculo.</p>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="tabs__panel {% if active_tab == 'configuracion' %}is-active{% endif %}" id="configuracion">
+    <div class="panel__header">
+      <h2>Configuracion</h2>
+      <span class="panel__hint">Define categorias y topes de facturacion.</span>
+    </div>
+    <form class="panel__form" method="post" action="{{ url_for('main.create_categoria') }}" data-confirm="Confirmar creacion de la categoria?">
+      <div class="form-grid">
+        <label class="field">
+          Categoria
+          <input type="text" name="nombre" placeholder="A" required>
+        </label>
+        <label class="field">
+          Tope de facturacion
+          <input type="text" name="tope_facturacion" placeholder="8.500.000,00" required>
+        </label>
+      </div>
+      <button class="primary" type="submit">Crear categoria</button>
+    </form>
+    <div class="table">
+      <div class="table__row table__head table__row--config">
+        <span>Categoria</span>
+        <span>Tope</span>
+        <span>Acciones</span>
+      </div>
+      {% for categoria in categorias_table %}
+      <div class="table__row table__row--config">
+        <span>{{ categoria.nombre }}</span>
+        <span>{{ categoria.tope }}</span>
+        <span class="row-actions">
+          <a class="icon-link" href="{{ url_for('main.edit_categoria', categoria_id=categoria.id) }}" aria-label="Editar">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M4 17.25V20h2.75l8.1-8.1-2.75-2.75-8.1 8.1zM20.7 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" fill="currentColor"/>
+            </svg>
+          </a>
+          <form method="post" action="{{ url_for('main.delete_categoria', categoria_id=categoria.id) }}" data-confirm="Confirmar eliminacion de la categoria?">
+            <button class="icon-link icon-link--danger" type="submit" aria-label="Eliminar" title="Eliminar">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M6 7h12l-1 13a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L6 7zm3-4h6l1 2H8l1-2z" fill="currentColor"/>
+              </svg>
+            </button>
+          </form>
+        </span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<div class="modal" data-modal="monotributista">
+  <div class="modal__content">
+    <div class="modal__header">
+      <h3>Nuevo monotributista</h3>
+      <button class="modal__close" type="button" data-close>&times;</button>
+    </div>
+    <form class="panel__form" method="post" action="{{ url_for('main.create_monotributista') }}" data-confirm="Confirmar creacion del monotributista?">
+      <div class="form-grid form-grid--stack">
+        <label class="field">
+          Razon Social
+          <input type="text" name="razon_social" required>
+        </label>
+        <label class="field">
+          CUIT
+          <input type="text" name="cuit" required>
+        </label>
+        <label class="field">
+          Clave Fiscal
+          <input type="text" name="clave_fiscal" required>
+        </label>
+        <label class="field">
+          Categoria Actual
+          <select name="categoria_actual_id" required>
+            <option value="">Seleccionar</option>
+            {% for categoria in categorias %}
+              <option value="{{ categoria.id }}">{{ categoria.nombre }}</option>
+            {% endfor %}
+          </select>
+        </label>
+      </div>
+      <button class="primary" type="submit">Crear monotributista</button>
+    </form>
+  </div>
+</div>
+
+<div class="modal" data-modal="factura">
+  <div class="modal__content">
+    <div class="modal__header">
+      <h3>Nueva factura</h3>
+      <button class="modal__close" type="button" data-close>&times;</button>
+    </div>
+    <form class="panel__form" method="post" enctype="multipart/form-data" action="{{ url_for('main.create_factura') }}" data-confirm="Confirmar creacion de la factura?">
+      <div class="form-grid">
+        <label class="field">
+          Facturador
+          <select name="monotributista_id" required>
+            <option value="">Seleccionar</option>
+            {% for item in monotributistas_select %}
+              <option value="{{ item.id }}">{{ item.razon_social }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="field">
+          Fecha
+          <input type="date" name="fecha" required>
+        </label>
+        <label class="field">
+          Tipo de comp
+          <select name="tipo_comp" required>
+            <option value="">Seleccionar</option>
+            <option value="C">C</option>
+            <option value="NC">NC</option>
+            <option value="E">E</option>
+          </select>
+        </label>
+        <label class="field">
+          Punto de venta
+          <input type="text" name="punto_venta" placeholder="2" required>
+        </label>
+        <label class="field">
+          Nro de comprobante
+          <input type="text" name="nro_comp" placeholder="38" required>
+        </label>
+        <label class="field">
+          CUIT Receptor
+          <input type="text" name="cuit_receptor">
+        </label>
+        <label class="field">
+          Razon Social Receptor
+          <input type="text" name="razon_social_receptor">
+        </label>
+        <label class="field">
+          Importe total
+          <input type="text" name="importe_total" placeholder="1.245.300,50" required>
+        </label>
+        <label class="field">
+          Concepto
+          <input type="text" name="concepto">
+        </label>
+        <label class="field">
+          Fecha DESDE
+          <input type="date" name="fecha_desde">
+        </label>
+        <label class="field">
+          Fecha HASTA
+          <input type="date" name="fecha_hasta">
+        </label>
+      </div>
+      <div class="form-actions">
+        <div class="field field--file">
+          <span>Subir PDF</span>
+          <div class="file-actions">
+            <input class="file-input" type="file" name="pdf_file" accept=".pdf" id="pdf-file-input">
+            <label class="file-button" for="pdf-file-input">Seleccionar PDF</label>
+            <button class="outline" type="button" data-process-pdf disabled>Procesar Factura</button>
+          </div>
+        </div>
+      </div>
+      <button class="primary" type="submit">Crear factura</button>
+    </form>
+  </div>
+</div>
+
+<script>
+  const tabs = document.querySelectorAll(".tab");
+  const panels = document.querySelectorAll(".tabs__panel");
+
+  tabs.forEach((tab) => {
+    tab.addEventListener("click", () => {
+      const target = tab.dataset.tab;
+      tabs.forEach((btn) => btn.classList.remove("is-active"));
+      panels.forEach((panel) => panel.classList.remove("is-active"));
+      tab.classList.add("is-active");
+      document.getElementById(target).classList.add("is-active");
+    });
+  });
+
+  const secretButtons = document.querySelectorAll("[data-toggle='secret']");
+  secretButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const cell = button.closest(".secret-cell");
+      const secret = cell.querySelector(".secret");
+      const showing = secret.dataset.showing === "true";
+      if (showing) {
+        secret.textContent = "********";
+        secret.dataset.showing = "false";
+        secret.setAttribute("title", "");
+        button.setAttribute("aria-label", "Mostrar clave fiscal");
+        button.setAttribute("title", "Mostrar clave fiscal");
+      } else {
+        secret.textContent = secret.dataset.secret;
+        secret.dataset.showing = "true";
+        secret.setAttribute("title", secret.dataset.secret);
+        button.setAttribute("aria-label", "Ocultar clave fiscal");
+        button.setAttribute("title", "Ocultar clave fiscal");
+      }
+    });
+  });
+
+  const pdfInput = document.querySelector("[data-modal='factura'] input[name='pdf_file']");
+  const processButton = document.querySelector("[data-process-pdf]");
+  if (pdfInput && processButton) {
+    const toggleProcessButton = () => {
+      processButton.disabled = !pdfInput.files || pdfInput.files.length === 0;
+    };
+    pdfInput.addEventListener("change", toggleProcessButton);
+    toggleProcessButton();
+  }
+
+  const monoTable = document.querySelector("#monotributistas .table");
+  if (monoTable) {
+    const headerRow = monoTable.querySelector(".table__head");
+    const rows = Array.from(monoTable.querySelectorAll("[data-row='mono']"));
+    const searchInput = document.getElementById("monoSearch");
+    const categoriaSelect = document.getElementById("monoCategoria");
+    const ordenSelect = document.getElementById("monoOrden");
+
+    const applyMonoFilters = () => {
+      const query = (searchInput.value || "").toLowerCase().trim();
+      const categoria = categoriaSelect.value;
+      const orden = ordenSelect.value;
+
+      let filtered = rows.filter((row) => {
+        const matchesQuery = row.dataset.search.includes(query);
+        const matchesCategoria = !categoria || row.dataset.categoria === categoria;
+        return matchesQuery && matchesCategoria;
+      });
+
+      const sorters = {
+        razon_asc: (a, b) => a.dataset.razon.localeCompare(b.dataset.razon),
+        razon_desc: (a, b) => b.dataset.razon.localeCompare(a.dataset.razon),
+        categoria_asc: (a, b) => a.dataset.categoria.localeCompare(b.dataset.categoria),
+      };
+
+      filtered.sort(sorters[orden] || sorters.razon_asc);
+
+      rows.forEach((row) => {
+        row.style.display = "none";
+      });
+
+      filtered.forEach((row) => {
+        row.style.display = "";
+        monoTable.appendChild(row);
+      });
+
+      monoTable.prepend(headerRow);
+    };
+
+    ["input", "change"].forEach((eventName) => {
+      searchInput.addEventListener(eventName, applyMonoFilters);
+    });
+    categoriaSelect.addEventListener("change", applyMonoFilters);
+    ordenSelect.addEventListener("change", applyMonoFilters);
+
+    applyMonoFilters();
+  }
+
+  const facturaTable = document.querySelector("#facturas .table");
+  if (facturaTable) {
+    const headerRow = facturaTable.querySelector(".table__head");
+    const rows = Array.from(facturaTable.querySelectorAll("[data-row='factura']"));
+    const searchInput = document.getElementById("facturaSearch");
+    const tipoSelect = document.getElementById("facturaTipo");
+    const facturadorSelect = document.getElementById("facturaFacturador");
+    const ordenSelect = document.getElementById("facturaOrden");
+
+    const applyFilters = () => {
+      const query = (searchInput.value || "").toLowerCase().trim();
+      const tipo = tipoSelect.value;
+      const facturador = facturadorSelect.value;
+      const orden = ordenSelect.value;
+
+      let filtered = rows.filter((row) => {
+        const matchesQuery = row.dataset.search.includes(query);
+        const matchesTipo = !tipo || row.dataset.tipo === tipo;
+        const matchesFacturador = !facturador || row.dataset.facturador === facturador;
+        return matchesQuery && matchesTipo && matchesFacturador;
+      });
+
+      const sorters = {
+        fecha_desc: (a, b) => b.dataset.fecha.localeCompare(a.dataset.fecha),
+        fecha_asc: (a, b) => a.dataset.fecha.localeCompare(b.dataset.fecha),
+        importe_desc: (a, b) => parseFloat(b.dataset.importe) - parseFloat(a.dataset.importe),
+        importe_asc: (a, b) => parseFloat(a.dataset.importe) - parseFloat(b.dataset.importe),
+      };
+
+      filtered.sort(sorters[orden] || sorters.fecha_desc);
+
+      rows.forEach((row) => {
+        row.style.display = "none";
+      });
+
+      filtered.forEach((row) => {
+        row.style.display = "";
+        facturaTable.appendChild(row);
+      });
+
+      facturaTable.prepend(headerRow);
+    };
+
+    ["input", "change"].forEach((eventName) => {
+      searchInput.addEventListener(eventName, applyFilters);
+    });
+    tipoSelect.addEventListener("change", applyFilters);
+    facturadorSelect.addEventListener("change", applyFilters);
+    ordenSelect.addEventListener("change", applyFilters);
+
+    applyFilters();
+  }
+
+  const openButtons = document.querySelectorAll("[data-open]");
+  const modals = document.querySelectorAll(".modal");
+  const closeButtons = document.querySelectorAll("[data-close]");
+
+  const openModal = (name) => {
+    const modal = document.querySelector(`.modal[data-modal=\"${name}\"]`);
+    if (modal) {
+      modal.classList.add("is-open");
+    }
+  };
+
+  const closeModal = (modal) => {
+    modal.classList.remove("is-open");
+  };
+
+  openButtons.forEach((button) => {
+    button.addEventListener("click", () => openModal(button.dataset.open));
+  });
+
+  closeButtons.forEach((button) => {
+    button.addEventListener("click", () => closeModal(button.closest(".modal")));
+  });
+
+  modals.forEach((modal) => {
+    modal.addEventListener("click", (event) => {
+      if (event.target === modal) {
+        closeModal(modal);
+      }
+    });
+  });
+</script>
+{% endblock %}

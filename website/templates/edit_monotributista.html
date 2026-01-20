@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="form-page">
+  <div class="form-card">
+    <h1>Editar monotributista</h1>
+    <form method="post" class="panel__form" data-confirm="Confirmar guardado del monotributista?">
+      <div class="form-grid">
+        <label class="field">
+          Razon Social
+          <input type="text" name="razon_social" value="{{ monotributista.razon_social }}" required>
+        </label>
+        <label class="field">
+          CUIT
+          <input type="text" name="cuit" value="{{ monotributista.cuit }}" required>
+        </label>
+        <label class="field">
+          Clave Fiscal
+          <input type="text" name="clave_fiscal" value="{{ monotributista.clave_fiscal }}" required>
+        </label>
+        <label class="field">
+          Categoria Actual
+          <select name="categoria_actual_id" required>
+            {% for categoria in categorias %}
+              <option value="{{ categoria.id }}" {% if monotributista.categoria_actual_id == categoria.id %}selected{% endif %}>{{ categoria.nombre }}</option>
+            {% endfor %}
+          </select>
+        </label>
+      </div>
+      <div class="form-actions">
+        <button class="primary" type="submit">Guardar cambios</button>
+        <a class="ghost-link" href="{{ url_for('main.dashboard', tab='monotributistas') }}">Volver</a>
+      </div>
+    </form>
+  </div>
+</section>
+{% endblock %}

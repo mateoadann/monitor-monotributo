@@ -1,0 +1,35 @@
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Envs
+.env
+.env.*
+env/
+venv/
+.venv/
+
+# Build
+build/
+dist/
+*.egg-info/
+
+# Tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+
+# IDE
+.idea/
+.vscode/
+
+# Databases
+*.db
+*.db-journal
+*.sqlite3

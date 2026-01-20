@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="form-page">
+  <div class="form-card">
+    <h1>Editar categoria</h1>
+    <form method="post" class="panel__form" data-confirm="Confirmar guardado de la categoria?">
+      <div class="form-grid">
+        <label class="field">
+          Categoria
+          <input type="text" name="nombre" value="{{ categoria.nombre }}" required>
+        </label>
+        <label class="field">
+          Tope de facturacion
+          <input type="text" name="tope_facturacion" value="{{ tope_value }}" required>
+        </label>
+      </div>
+      <div class="form-actions">
+        <button class="primary" type="submit">Guardar cambios</button>
+        <a class="ghost-link" href="{{ url_for('main.dashboard', tab='configuracion') }}">Volver</a>
+      </div>
+    </form>
+  </div>
+</section>
+{% endblock %}
