@@ -31,5 +31,6 @@ dist/
 
 # Databases
 *.db
+!monitor.db
 *.db-journal
 *.sqlite3
