@@ -3,12 +3,18 @@ from __future__ import annotations
 from collections import OrderedDict
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
+import os
+import uuid
 
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
 from flask_login import login_required
+from rq import Retry
 from sqlalchemy import or_
+from werkzeug.utils import secure_filename
 
-from website.models import Categoria, Factura, Monotributista, db
+from website.models import Categoria, Factura, FacturaImport, Monotributista, db
+from website.pdf_jobs import process_factura_import
+from website.queue import get_queue
 
 main_bp = Blueprint("main", __name__)
 
@@ -357,6 +363,48 @@ def delete_monotributista(monotributista_id):
 @main_bp.post("/facturas/create")
 @login_required
 def create_factura():
+    pdf_file = request.files.get("pdf_file")
+    has_pdf = pdf_file and pdf_file.filename
+
+    if has_pdf:
+        if not pdf_file.filename.lower().endswith(".pdf"):
+            flash("El archivo debe ser un PDF.", "error")
+            return redirect(url_for("main.dashboard", tab="facturas"))
+
+        monotributista_id = request.form.get("monotributista_id")
+        monotributista_id = int(monotributista_id) if monotributista_id else None
+
+        upload_root = current_app.config["UPLOAD_FOLDER"]
+        upload_dir = os.path.join(upload_root, "facturas", uuid.uuid4().hex)
+        os.makedirs(upload_dir, exist_ok=True)
+        filename = secure_filename(pdf_file.filename) or "factura.pdf"
+        pdf_path = os.path.join(upload_dir, filename)
+        pdf_file.save(pdf_path)
+
+        factura_import = FacturaImport(
+            monotributista_id=monotributista_id,
+            status="pending",
+            pdf_path=pdf_path,
+        )
+        db.session.add(factura_import)
+        db.session.commit()
+
+        try:
+            queue = get_queue()
+            queue.enqueue(
+                process_factura_import,
+                factura_import.id,
+                job_timeout=300,
+                retry=Retry(max=3, interval=[10, 30, 60]),
+            )
+            flash("Factura en cola para procesamiento.", "success")
+        except Exception as exc:
+            factura_import.status = "failed"
+            factura_import.error = f"No se pudo encolar: {exc}"
+            db.session.commit()
+            flash("No se pudo encolar el PDF.", "error")
+        return redirect(url_for("main.dashboard", tab="facturas"))
+
     monotributista_id = request.form.get("monotributista_id")
     fecha = parse_date(request.form.get("fecha"))
     tipo_comp = request.form.get("tipo_comp", "").strip()
@@ -368,7 +416,6 @@ def create_factura():
     fecha_desde = parse_date(request.form.get("fecha_desde"))
     fecha_hasta = parse_date(request.form.get("fecha_hasta"))
     concepto = request.form.get("concepto", "").strip()
-    pdf_file = request.files.get("pdf_file")
 
     if (
         not monotributista_id
@@ -401,8 +448,6 @@ def create_factura():
     )
     db.session.add(factura)
     db.session.commit()
-    if pdf_file and pdf_file.filename:
-        flash("Archivo recibido. Pendiente de procesamiento.", "success")
     flash("Factura creada.", "success")
     return redirect(url_for("main.dashboard", tab="facturas"))
 

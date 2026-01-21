@@ -1,17 +1,25 @@
 {% extends "base.html" %}
 {% block header_row_content %}
-<div class="hero__stats hero__stats--compact">
-  <div class="stat">
-    <span>Monotributistas</span>
-    <strong>{{ monotributistas | length }}</strong>
+<div class="topbar__meta">
+  <div class="hero__stats hero__stats--compact">
+    <div class="stat">
+      <span>Monotributistas</span>
+      <strong>{{ monotributistas | length }}</strong>
+    </div>
+    <div class="stat">
+      <span>Facturas</span>
+      <strong>{{ facturas | length }}</strong>
+    </div>
+    <div class="stat">
+      <span>Alertas</span>
+      <strong>2</strong>
+    </div>
   </div>
-  <div class="stat">
-    <span>Facturas</span>
-    <strong>{{ facturas | length }}</strong>
-  </div>
-  <div class="stat">
-    <span>Alertas</span>
-    <strong>2</strong>
+  <div class="tabs__controls tabs__controls--topbar">
+    <button class="tab {% if active_tab == 'monotributistas' %}is-active{% endif %}" data-tab="monotributistas">Monotributista</button>
+    <button class="tab {% if active_tab == 'facturas' %}is-active{% endif %}" data-tab="facturas">Facturas</button>
+    <button class="tab {% if active_tab == 'calculo' %}is-active{% endif %}" data-tab="calculo">Calculo</button>
+    <button class="tab {% if active_tab == 'configuracion' %}is-active{% endif %}" data-tab="configuracion">Configuracion</button>
   </div>
 </div>
 {% endblock %}
@@ -19,13 +27,6 @@
 {% block content %}
 
 <section class="tabs">
-  <div class="tabs__controls">
-    <button class="tab {% if active_tab == 'monotributistas' %}is-active{% endif %}" data-tab="monotributistas">Monotributista</button>
-    <button class="tab {% if active_tab == 'facturas' %}is-active{% endif %}" data-tab="facturas">Facturas</button>
-    <button class="tab {% if active_tab == 'calculo' %}is-active{% endif %}" data-tab="calculo">Calculo</button>
-    <button class="tab {% if active_tab == 'configuracion' %}is-active{% endif %}" data-tab="configuracion">Configuracion</button>
-  </div>
-
   <div class="tabs__panel {% if active_tab == 'monotributistas' %}is-active{% endif %}" id="monotributistas">
     <div class="panel__header">
       <h2>Listado de monotributistas</h2>
@@ -136,6 +137,11 @@
           <option value="importe_asc">Importe: menor</option>
         </select>
       </label>
+      <div class="pagination pagination--top" data-pagination="facturas-top">
+        <button class="ghost-button" type="button" data-page="prev">Anterior</button>
+        <span class="pagination__info" data-page-info>Pagina 1 de 1</span>
+        <button class="ghost-button" type="button" data-page="next">Siguiente</button>
+      </div>
     </div>
     <div class="panel__actions">
       <button class="primary" type="button" data-open="factura">Cargar factura</button>
@@ -155,7 +161,7 @@
         <span>Acciones</span>
       </div>
       {% for item in facturas %}
-      <div class="table__row table__row--facturas" data-row="factura" data-tipo="{{ item.tipo }}" data-fecha="{{ item.fecha_iso }}" data-importe="{{ item.importe_raw }}" data-facturador="{{ item.facturador }}" data-search="{{ (item.facturador ~ ' ' ~ item.fecha ~ ' ' ~ item.tipo ~ ' ' ~ item.numero ~ ' ' ~ item.cuit_receptor ~ ' ' ~ item.razon_receptor ~ ' ' ~ item.importe ~ ' ' ~ item.desde ~ ' ' ~ item.hasta ~ ' ' ~ item.concepto) | lower }}">
+      <div class="table__row table__row--facturas is-clickable" role="button" tabindex="0" data-row="factura" data-tipo="{{ item.tipo }}" data-fecha="{{ item.fecha_iso }}" data-fecha-label="{{ item.fecha }}" data-importe="{{ item.importe_raw }}" data-importe-label="{{ item.importe }}" data-facturador="{{ item.facturador }}" data-numero="{{ item.numero }}" data-cuit-receptor="{{ item.cuit_receptor }}" data-razon-receptor="{{ item.razon_receptor }}" data-desde="{{ item.desde }}" data-hasta="{{ item.hasta }}" data-concepto="{{ item.concepto }}" data-search="{{ (item.facturador ~ ' ' ~ item.fecha ~ ' ' ~ item.tipo ~ ' ' ~ item.numero ~ ' ' ~ item.cuit_receptor ~ ' ' ~ item.razon_receptor ~ ' ' ~ item.importe ~ ' ' ~ item.desde ~ ' ' ~ item.hasta ~ ' ' ~ item.concepto) | lower }}">
         <span>{{ item.facturador }}</span>
         <span>{{ item.fecha }}</span>
         <span>{{ item.tipo }}</span>
@@ -165,7 +171,13 @@
         <span>{{ item.importe }}</span>
         <span>{{ item.desde }}</span>
         <span>{{ item.hasta }}</span>
-        <span>{{ item.concepto }}</span>
+        <span>
+          {% if item.concepto|length > 25 %}
+            {{ item.concepto[:22] ~ "..." }}
+          {% else %}
+            {{ item.concepto }}
+          {% endif %}
+        </span>
         <span class="row-actions">
           <a class="icon-link" href="{{ url_for('main.edit_factura', factura_id=item.id) }}" aria-label="Editar">
             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -182,6 +194,11 @@
         </span>
       </div>
       {% endfor %}
+    </div>
+    <div class="pagination pagination--bottom" data-pagination="facturas-bottom">
+      <button class="ghost-button" type="button" data-page="prev">Anterior</button>
+      <span class="pagination__info" data-page-info>Pagina 1 de 1</span>
+      <button class="ghost-button" type="button" data-page="next">Siguiente</button>
     </div>
   </div>
 
@@ -221,7 +238,7 @@
             <span>Categoria corresponde</span>
             <div class="summary-card__value">
               <strong>{{ detalle.categoria_corresponde }}</strong>
-              <span class="summary-card__tope"><strong> - {{ detalle.tope_corresponde }}</strong></span>
+              <span class="summary-card__tope"><strong> = {{ detalle.tope_corresponde }}</strong></span>
             </div>
           </div>
           <div class="summary-card">
@@ -341,7 +358,7 @@
       <div class="form-grid">
         <label class="field">
           Facturador
-          <select name="monotributista_id" required>
+          <select name="monotributista_id">
             <option value="">Seleccionar</option>
             {% for item in monotributistas_select %}
               <option value="{{ item.id }}">{{ item.razon_social }}</option>
@@ -350,11 +367,11 @@
         </label>
         <label class="field">
           Fecha
-          <input type="date" name="fecha" required>
+          <input type="date" name="fecha">
         </label>
         <label class="field">
           Tipo de comp
-          <select name="tipo_comp" required>
+          <select name="tipo_comp">
             <option value="">Seleccionar</option>
             <option value="C">C</option>
             <option value="NC">NC</option>
@@ -363,11 +380,11 @@
         </label>
         <label class="field">
           Punto de venta
-          <input type="text" name="punto_venta" placeholder="2" required>
+          <input type="text" name="punto_venta" placeholder="2">
         </label>
         <label class="field">
           Nro de comprobante
-          <input type="text" name="nro_comp" placeholder="38" required>
+          <input type="text" name="nro_comp" placeholder="38">
         </label>
         <label class="field">
           CUIT Receptor
@@ -379,7 +396,7 @@
         </label>
         <label class="field">
           Importe total
-          <input type="text" name="importe_total" placeholder="1.245.300,50" required>
+          <input type="text" name="importe_total" placeholder="1.245.300,50">
         </label>
         <label class="field">
           Concepto
@@ -397,15 +414,79 @@
       <div class="form-actions">
         <div class="field field--file">
           <span>Subir PDF</span>
+          <p class="form-hint">Si subis un PDF, el sistema completa los datos automaticamente.</p>
           <div class="file-actions">
             <input class="file-input" type="file" name="pdf_file" accept=".pdf" id="pdf-file-input">
             <label class="file-button" for="pdf-file-input">Seleccionar PDF</label>
-            <button class="outline" type="button" data-process-pdf disabled>Procesar Factura</button>
+            <button class="outline" type="submit" name="process_pdf" value="1" data-process-pdf disabled>Procesar Factura</button>
+            <div class="file-info">
+              <span class="file-name" data-file-name>Sin archivo</span>
+              <button class="file-clear is-hidden" type="button" data-file-clear aria-label="Quitar PDF">&times;</button>
+            </div>
           </div>
         </div>
       </div>
       <button class="primary" type="submit">Crear factura</button>
     </form>
+  </div>
+</div>
+
+<div class="modal" data-modal="factura-view">
+  <div class="modal__content">
+    <div class="modal__header">
+      <h3>Detalle de factura</h3>
+      <button class="modal__close" type="button" data-close>&times;</button>
+    </div>
+    <div class="detail-grid">
+      <div class="detail-item">
+        <span>Facturador</span>
+        <strong data-field="facturador">-</strong>
+      </div>
+      <div class="detail-item">
+        <span>Tipo</span>
+        <strong data-field="tipo">-</strong>
+      </div>
+      <div class="detail-item">
+        <span>Nro. comp.</span>
+        <strong data-field="numero">-</strong>
+      </div>
+      <div class="detail-item">
+        <span>Razon social receptor</span>
+        <strong data-field="razon_receptor">-</strong>
+      </div>
+      <div class="detail-item">
+        <span>CUIT receptor</span>
+        <strong data-field="cuit_receptor">-</strong>
+      </div>
+      <div class="detail-item detail-item--empty">
+        <span>&nbsp;</span>
+        <strong>&nbsp;</strong>
+      </div>
+      <div class="detail-item">
+        <span>Concepto</span>
+        <strong data-field="concepto">-</strong>
+      </div>
+      <div class="detail-item">
+        <span>Importe</span>
+        <strong data-field="importe">-</strong>
+      </div>
+      <div class="detail-item">
+        <span>Fecha</span>
+        <strong data-field="fecha">-</strong>
+      </div>
+      <div class="detail-item">
+        <span>Desde</span>
+        <strong data-field="desde">-</strong>
+      </div>
+      <div class="detail-item">
+        <span>Hasta</span>
+        <strong data-field="hasta">-</strong>
+      </div>
+      <div class="detail-item detail-item--empty">
+        <span>&nbsp;</span>
+        <strong>&nbsp;</strong>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -448,11 +529,52 @@
   const pdfInput = document.querySelector("[data-modal='factura'] input[name='pdf_file']");
   const processButton = document.querySelector("[data-process-pdf]");
   if (pdfInput && processButton) {
-    const toggleProcessButton = () => {
-      processButton.disabled = !pdfInput.files || pdfInput.files.length === 0;
+    const fileNameLabel = document.querySelector("[data-file-name]");
+    const clearButton = document.querySelector("[data-file-clear]");
+
+    const formatBytes = (bytes) => {
+      if (!Number.isFinite(bytes)) {
+        return "";
+      }
+      if (bytes < 1024) {
+        return `${bytes} B`;
+      }
+      const kb = bytes / 1024;
+      if (kb < 1024) {
+        return `${kb.toFixed(1)} KB`;
+      }
+      const mb = kb / 1024;
+      return `${mb.toFixed(1)} MB`;
     };
-    pdfInput.addEventListener("change", toggleProcessButton);
-    toggleProcessButton();
+
+    const updateFileState = () => {
+      const hasFile = pdfInput.files && pdfInput.files.length > 0;
+      processButton.disabled = !hasFile;
+      if (fileNameLabel) {
+        if (hasFile) {
+          const file = pdfInput.files[0];
+          const sizeLabel = formatBytes(file.size);
+          fileNameLabel.textContent = sizeLabel
+            ? `${file.name} · ${sizeLabel}`
+            : file.name;
+        } else {
+          fileNameLabel.textContent = "Sin archivo";
+        }
+      }
+      if (clearButton) {
+        clearButton.classList.toggle("is-hidden", !hasFile);
+        clearButton.disabled = !hasFile;
+      }
+    };
+
+    pdfInput.addEventListener("change", updateFileState);
+    if (clearButton) {
+      clearButton.addEventListener("click", () => {
+        pdfInput.value = "";
+        updateFileState();
+      });
+    }
+    updateFileState();
   }
 
   const monoTable = document.querySelector("#monotributistas .table");
@@ -511,8 +633,53 @@
     const tipoSelect = document.getElementById("facturaTipo");
     const facturadorSelect = document.getElementById("facturaFacturador");
     const ordenSelect = document.getElementById("facturaOrden");
+    const paginationTop = document.querySelector("[data-pagination='facturas-top']");
+    const paginationBottom = document.querySelector("[data-pagination='facturas-bottom']");
+    const pageSize = 10;
+    let currentPage = 1;
 
-    const applyFilters = () => {
+    const updatePaginationButtons = (totalPages) => {
+      [paginationTop, paginationBottom].forEach((container) => {
+        if (!container) {
+          return;
+        }
+        const prev = container.querySelector("[data-page='prev']");
+        const next = container.querySelector("[data-page='next']");
+        const info = container.querySelector("[data-page-info]");
+        if (prev) {
+          prev.disabled = currentPage <= 1;
+        }
+        if (next) {
+          next.disabled = currentPage >= totalPages;
+        }
+        if (info) {
+          info.textContent = `Pagina ${currentPage} de ${totalPages}`;
+        }
+      });
+    };
+
+    const renderPage = (filtered) => {
+      const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+      if (currentPage > totalPages) {
+        currentPage = totalPages;
+      }
+      const start = (currentPage - 1) * pageSize;
+      const pageRows = filtered.slice(start, start + pageSize);
+
+      rows.forEach((row) => {
+        row.style.display = "none";
+      });
+
+      pageRows.forEach((row) => {
+        row.style.display = "";
+        facturaTable.appendChild(row);
+      });
+
+      facturaTable.prepend(headerRow);
+      updatePaginationButtons(totalPages);
+    };
+
+    const applyFilters = (resetPage = false) => {
       const query = (searchInput.value || "").toLowerCase().trim();
       const tipo = tipoSelect.value;
       const facturador = facturadorSelect.value;
@@ -533,46 +700,109 @@
       };
 
       filtered.sort(sorters[orden] || sorters.fecha_desc);
-
-      rows.forEach((row) => {
-        row.style.display = "none";
-      });
-
-      filtered.forEach((row) => {
-        row.style.display = "";
-        facturaTable.appendChild(row);
-      });
-
-      facturaTable.prepend(headerRow);
+      if (resetPage) {
+        currentPage = 1;
+      }
+      renderPage(filtered);
     };
 
     ["input", "change"].forEach((eventName) => {
-      searchInput.addEventListener(eventName, applyFilters);
+      searchInput.addEventListener(eventName, () => applyFilters(true));
     });
-    tipoSelect.addEventListener("change", applyFilters);
-    facturadorSelect.addEventListener("change", applyFilters);
-    ordenSelect.addEventListener("change", applyFilters);
+    tipoSelect.addEventListener("change", () => applyFilters(true));
+    facturadorSelect.addEventListener("change", () => applyFilters(true));
+    ordenSelect.addEventListener("change", () => applyFilters(true));
 
-    applyFilters();
+    [paginationTop, paginationBottom].forEach((container) => {
+      if (!container) {
+        return;
+      }
+      const prev = container.querySelector("[data-page='prev']");
+      const next = container.querySelector("[data-page='next']");
+      if (prev) {
+        prev.addEventListener("click", () => {
+          if (currentPage > 1) {
+            currentPage -= 1;
+            applyFilters(false);
+          }
+        });
+      }
+      if (next) {
+        next.addEventListener("click", () => {
+          currentPage += 1;
+          applyFilters(false);
+        });
+      }
+    });
+
+    applyFilters(true);
   }
 
   const openButtons = document.querySelectorAll("[data-open]");
   const modals = document.querySelectorAll(".modal");
   const closeButtons = document.querySelectorAll("[data-close]");
 
+  const updateBodyScroll = () => {
+    const hasOpen = document.querySelector(".modal.is-open");
+    document.body.classList.toggle("modal-open", Boolean(hasOpen));
+  };
+
   const openModal = (name) => {
     const modal = document.querySelector(`.modal[data-modal=\"${name}\"]`);
     if (modal) {
       modal.classList.add("is-open");
+      updateBodyScroll();
     }
+  };
+
+  const facturaViewModal = document.querySelector("[data-modal='factura-view']");
+  const setFacturaDetail = (field, value) => {
+    if (!facturaViewModal) {
+      return;
+    }
+    const target = facturaViewModal.querySelector(`[data-field='${field}']`);
+    if (target) {
+      target.textContent = value || "-";
+    }
+  };
+
+  const openFacturaDetail = (row) => {
+    setFacturaDetail("facturador", row.dataset.facturador);
+    setFacturaDetail("fecha", row.dataset.fechaLabel);
+    setFacturaDetail("tipo", row.dataset.tipo);
+    setFacturaDetail("numero", row.dataset.numero);
+    setFacturaDetail("cuit_receptor", row.dataset.cuitReceptor);
+    setFacturaDetail("razon_receptor", row.dataset.razonReceptor);
+    setFacturaDetail("importe", row.dataset.importeLabel);
+    setFacturaDetail("desde", row.dataset.desde);
+    setFacturaDetail("hasta", row.dataset.hasta);
+    setFacturaDetail("concepto", row.dataset.concepto);
+    openModal("factura-view");
   };
 
   const closeModal = (modal) => {
     modal.classList.remove("is-open");
+    updateBodyScroll();
   };
 
   openButtons.forEach((button) => {
     button.addEventListener("click", () => openModal(button.dataset.open));
+  });
+
+  const facturaRows = document.querySelectorAll("[data-row='factura']");
+  facturaRows.forEach((row) => {
+    row.addEventListener("click", (event) => {
+      if (event.target.closest(".row-actions, a, button, form")) {
+        return;
+      }
+      openFacturaDetail(row);
+    });
+    row.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openFacturaDetail(row);
+      }
+    });
   });
 
   closeButtons.forEach((button) => {
@@ -585,6 +815,16 @@
         closeModal(modal);
       }
     });
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") {
+      return;
+    }
+    const openModalEl = document.querySelector(".modal.is-open");
+    if (openModalEl) {
+      closeModal(openModalEl);
+    }
   });
 </script>
 {% endblock %}

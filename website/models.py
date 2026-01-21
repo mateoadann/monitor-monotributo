@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 from flask_login import UserMixin
@@ -57,6 +57,20 @@ class Factura(db.Model):
     concepto = db.Column(db.String(240))
 
     monotributista = db.relationship("Monotributista", back_populates="facturas")
+
+
+class FacturaImport(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    status = db.Column(db.String(20), nullable=False, default="pending")
+    error = db.Column(db.Text)
+    pdf_path = db.Column(db.String(255), nullable=False)
+    extracted_data = db.Column(db.Text)
+    monotributista_id = db.Column(db.Integer, db.ForeignKey("monotributista.id"))
+    factura_id = db.Column(db.Integer, db.ForeignKey("factura.id"))
+
+    monotributista = db.relationship("Monotributista")
+    factura = db.relationship("Factura")
 
 
 def authenticate(username: str, password: str) -> User | None:

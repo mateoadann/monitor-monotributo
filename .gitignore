@@ -34,3 +34,8 @@ dist/
 !monitor.db
 *.db-journal
 *.sqlite3
+
+# Uploads
+uploads/
+
+facturas_ejemplos/

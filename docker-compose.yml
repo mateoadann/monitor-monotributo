@@ -8,5 +8,25 @@ services:
     environment:
       DATABASE_URL: sqlite:////app/monitor.db
       SECRET_KEY: dev-change-me
+      REDIS_URL: redis://redis:6379/0
     volumes:
       - ./monitor.db:/app/monitor.db
+      - ./uploads:/app/uploads
+    depends_on:
+      - redis
+
+  worker:
+    build: .
+    command: ["python", "worker.py"]
+    environment:
+      DATABASE_URL: sqlite:////app/monitor.db
+      SECRET_KEY: dev-change-me
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - ./monitor.db:/app/monitor.db
+      - ./uploads:/app/uploads
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:7-alpine
