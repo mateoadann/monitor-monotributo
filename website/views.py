@@ -138,6 +138,14 @@ def calcular_totales(monotributista: Monotributista, anchor: date):
 
     facturas = Factura.query.filter_by(monotributista_id=monotributista.id).all()
     for factura in facturas:
+        importe_total = factura.importe_total
+        if (
+            factura.tipo_comp
+            and factura.tipo_comp.upper().startswith("NC")
+            and importe_total > 0
+        ):
+            importe_total = -importe_total
+
         start = factura.fecha_desde or factura.fecha_hasta or factura.fecha
         end = factura.fecha_hasta or factura.fecha_desde or factura.fecha
 
@@ -150,17 +158,17 @@ def calcular_totales(monotributista: Monotributista, anchor: date):
         if start.year == end.year and start.month == end.month:
             label = months_lookup.get((start.year, start.month))
             if label:
-                month_totals[label] += factura.importe_total
+                month_totals[label] += importe_total
             continue
 
         total_days = (end - start).days + 1
         if total_days <= 0:
             label = months_lookup.get((start.year, start.month))
             if label:
-                month_totals[label] += factura.importe_total
+                month_totals[label] += importe_total
             continue
 
-        daily_amount = factura.importe_total / Decimal(total_days)
+        daily_amount = importe_total / Decimal(total_days)
         current = start
         while current <= end:
             label = months_lookup.get((current.year, current.month))
@@ -183,6 +191,9 @@ def build_calculo(
     return {
         "categoria_actual": categoria_actual.nombre if categoria_actual else "-",
         "categoria_corresponde": categoria_corresponde.nombre if categoria_corresponde else "-",
+        "tope_actual": (
+            format_currency(categoria_actual.tope_facturacion) if categoria_actual else "-"
+        ),
         "tope_corresponde": (
             format_currency(categoria_corresponde.tope_facturacion)
             if categoria_corresponde
@@ -223,11 +234,18 @@ def dashboard():
     categorias_sorted = sorted(categorias_raw, key=lambda item: item.tope_facturacion)
     facturas_raw = Factura.query.order_by(Factura.fecha.desc()).all()
 
-    anchor_actual = date.today().replace(day=1)
+    anchor_actual = date.today().replace(day=1) - timedelta(days=1)
     monotributistas = []
+    count_sube = 0
+    count_baja = 0
     for item in monotributistas_raw:
         _, total_actual = calcular_totales(item, anchor_actual)
         corresponde = categoria_por_total(total_actual, categorias_sorted) or item.categoria_actual
+        estado = estado_categoria(item.categoria_actual, corresponde)
+        if estado == "sube":
+            count_sube += 1
+        elif estado == "baja":
+            count_baja += 1
         monotributistas.append(
             {
                 "id": item.id,
@@ -238,7 +256,7 @@ def dashboard():
                 "categoria_corresponde": (
                     corresponde.nombre if corresponde else (item.categoria_actual.nombre if item.categoria_actual else "-")
                 ),
-                "estado_categoria": estado_categoria(item.categoria_actual, corresponde),
+                "estado_categoria": estado,
             }
         )
 
@@ -273,6 +291,8 @@ def dashboard():
         else None
     )
 
+    fecha_corte_label = anchor_actual.strftime("%d/%m/%y")
+
     return render_template(
         "dashboard.html",
         monotributistas=monotributistas,
@@ -292,6 +312,9 @@ def dashboard():
         detalle=detalle,
         active_tab=active_tab,
         anchor_value=anchor_value,
+        count_sube=count_sube,
+        count_baja=count_baja,
+        fecha_corte_label=fecha_corte_label,
     )
 
 
@@ -363,46 +386,57 @@ def delete_monotributista(monotributista_id):
 @main_bp.post("/facturas/create")
 @login_required
 def create_factura():
-    pdf_file = request.files.get("pdf_file")
-    has_pdf = pdf_file and pdf_file.filename
+    pdf_files = [item for item in request.files.getlist("pdf_file") if item and item.filename]
+    has_pdf = len(pdf_files) > 0
 
     if has_pdf:
-        if not pdf_file.filename.lower().endswith(".pdf"):
-            flash("El archivo debe ser un PDF.", "error")
-            return redirect(url_for("main.dashboard", tab="facturas"))
-
         monotributista_id = request.form.get("monotributista_id")
         monotributista_id = int(monotributista_id) if monotributista_id else None
 
-        upload_root = current_app.config["UPLOAD_FOLDER"]
-        upload_dir = os.path.join(upload_root, "facturas", uuid.uuid4().hex)
-        os.makedirs(upload_dir, exist_ok=True)
-        filename = secure_filename(pdf_file.filename) or "factura.pdf"
-        pdf_path = os.path.join(upload_dir, filename)
-        pdf_file.save(pdf_path)
+        invalid = [item.filename for item in pdf_files if not item.filename.lower().endswith(".pdf")]
+        if invalid:
+            flash("Todos los archivos deben ser PDFs.", "error")
+            return redirect(url_for("main.dashboard", tab="facturas"))
 
-        factura_import = FacturaImport(
-            monotributista_id=monotributista_id,
-            status="pending",
-            pdf_path=pdf_path,
-        )
-        db.session.add(factura_import)
+        upload_root = current_app.config["UPLOAD_FOLDER"]
+        queue = get_queue()
+        enqueued = 0
+
+        for pdf_file in pdf_files:
+            upload_dir = os.path.join(upload_root, "facturas", uuid.uuid4().hex)
+            os.makedirs(upload_dir, exist_ok=True)
+            filename = secure_filename(pdf_file.filename) or "factura.pdf"
+            pdf_path = os.path.join(upload_dir, filename)
+            pdf_file.save(pdf_path)
+
+            factura_import = FacturaImport(
+                monotributista_id=monotributista_id,
+                status="pending",
+                pdf_path=pdf_path,
+            )
+            db.session.add(factura_import)
+            db.session.flush()
+
+            try:
+                queue.enqueue(
+                    process_factura_import,
+                    factura_import.id,
+                    job_timeout=300,
+                    retry=Retry(max=3, interval=[10, 30, 60]),
+                )
+                enqueued += 1
+            except Exception as exc:
+                factura_import.status = "failed"
+                factura_import.error = f"No se pudo encolar: {exc}"
         db.session.commit()
 
-        try:
-            queue = get_queue()
-            queue.enqueue(
-                process_factura_import,
-                factura_import.id,
-                job_timeout=300,
-                retry=Retry(max=3, interval=[10, 30, 60]),
+        if enqueued:
+            flash(
+                f"Facturas en cola para procesamiento: {enqueued}.",
+                "success",
             )
-            flash("Factura en cola para procesamiento.", "success")
-        except Exception as exc:
-            factura_import.status = "failed"
-            factura_import.error = f"No se pudo encolar: {exc}"
-            db.session.commit()
-            flash("No se pudo encolar el PDF.", "error")
+        else:
+            flash("No se pudo encolar ningun PDF.", "error")
         return redirect(url_for("main.dashboard", tab="facturas"))
 
     monotributista_id = request.form.get("monotributista_id")
@@ -427,6 +461,9 @@ def create_factura():
     ):
         flash("Completa los campos requeridos para crear la factura.", "error")
         return redirect(url_for("main.dashboard", tab="facturas"))
+
+    if tipo_comp.upper().startswith("NC") and importe_total > 0:
+        importe_total = -importe_total
 
     if not punto_venta.isdigit() or not nro_comp.isdigit():
         flash("El punto de venta y el numero de comprobante deben ser numericos.", "error")
@@ -482,6 +519,8 @@ def edit_factura(factura_id):
         ):
             flash("Completa los campos requeridos para editar la factura.", "error")
         else:
+            if tipo_comp.upper().startswith("NC") and importe_total > 0:
+                importe_total = -importe_total
             if not punto_venta.isdigit() or not nro_comp.isdigit():
                 flash(
                     "El punto de venta y el numero de comprobante deben ser numericos.",

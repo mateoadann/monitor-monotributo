@@ -3,16 +3,22 @@
 <div class="topbar__meta">
   <div class="hero__stats hero__stats--compact">
     <div class="stat">
-      <span>Monotributistas</span>
+      <span class="stat__label">Monotributistas</span>
       <strong>{{ monotributistas | length }}</strong>
     </div>
-    <div class="stat">
-      <span>Facturas</span>
-      <strong>{{ facturas | length }}</strong>
+    <div class="stat stat--danger">
+      <span class="stat__label">
+        Alerta
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="#000000" stroke-width="2.4" transform="rotate(180)"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <path d="M12.75 4C12.75 3.58579 12.4142 3.25 12 3.25C11.5858 3.25 11.25 3.58579 11.25 4L11.25 13.25H6.00002C5.69668 13.25 5.4232 13.4327 5.30711 13.713C5.19103 13.9932 5.25519 14.3158 5.46969 14.5303L11.4697 20.5303C11.6103 20.671 11.8011 20.75 12 20.75C12.1989 20.75 12.3897 20.671 12.5304 20.5303L18.5304 14.5303C18.7449 14.3158 18.809 13.9932 18.6929 13.713C18.5768 13.4327 18.3034 13.25 18 13.25H12.75L12.75 4Z" fill="#000000"></path> </g></svg>
+      </span>
+      <strong>{{ count_sube }}</strong>
     </div>
-    <div class="stat">
-      <span>Alertas</span>
-      <strong>2</strong>
+    <div class="stat stat--warning">
+      <span class="stat__label">
+        Alerta
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="#000000" stroke-width="2.4"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <path d="M12.75 4C12.75 3.58579 12.4142 3.25 12 3.25C11.5858 3.25 11.25 3.58579 11.25 4L11.25 13.25H6.00002C5.69668 13.25 5.4232 13.4327 5.30711 13.713C5.19103 13.9932 5.25519 14.3158 5.46969 14.5303L11.4697 20.5303C11.6103 20.671 11.8011 20.75 12 20.75C12.1989 20.75 12.3897 20.671 12.5304 20.5303L18.5304 14.5303C18.7449 14.3158 18.809 13.9932 18.6929 13.713C18.5768 13.4327 18.3034 13.25 18 13.25H12.75L12.75 4Z" fill="#000000"></path> </g></svg>
+      </span>
+      <strong>{{ count_baja }}</strong>
     </div>
   </div>
   <div class="tabs__controls tabs__controls--topbar">
@@ -30,7 +36,7 @@
   <div class="tabs__panel {% if active_tab == 'monotributistas' %}is-active{% endif %}" id="monotributistas">
     <div class="panel__header">
       <h2>Listado de monotributistas</h2>
-      <span class="panel__hint">Gestiona datos fiscales y categorias.</span>
+      <span class="panel__hint">Gestiona datos fiscales y categorias. Corte: {{ fecha_corte_label }}</span>
     </div>
     <div class="table-tools">
       <label class="field field--inline">
@@ -124,8 +130,9 @@
         Tipo
         <select id="facturaTipo">
           <option value="">Todos</option>
-          <option value="B">B</option>
-          <option value="NCB">NCB</option>
+          <option value="C">C</option>
+          <option value="NC">NC</option>
+          <option value="E">E</option>
         </select>
       </label>
       <label class="field field--inline">
@@ -232,7 +239,10 @@
         <div class="calculo__summary">
           <div class="summary-card">
             <span>Categoria actual</span>
-            <strong>{{ detalle.categoria_actual }}</strong>
+            <div class="summary-card__value">
+              <strong>{{ detalle.categoria_actual }}</strong>
+              <span class="summary-card__tope"><strong> = {{ detalle.tope_actual }}</strong></span>
+            </div>
           </div>
           <div class="summary-card summary-card--{{ detalle.estado_categoria }}">
             <span>Categoria corresponde</span>
@@ -416,12 +426,13 @@
           <span>Subir PDF</span>
           <p class="form-hint">Si subis un PDF, el sistema completa los datos automaticamente.</p>
           <div class="file-actions">
-            <input class="file-input" type="file" name="pdf_file" accept=".pdf" id="pdf-file-input">
+            <input class="file-input" type="file" name="pdf_file" accept=".pdf" id="pdf-file-input" multiple>
             <label class="file-button" for="pdf-file-input">Seleccionar PDF</label>
             <button class="outline" type="submit" name="process_pdf" value="1" data-process-pdf disabled>Procesar Factura</button>
             <div class="file-info">
-              <span class="file-name" data-file-name>Sin archivo</span>
-              <button class="file-clear is-hidden" type="button" data-file-clear aria-label="Quitar PDF">&times;</button>
+              <div class="file-list" data-file-list>
+                <span class="file-empty">Sin archivo</span>
+              </div>
             </div>
           </div>
         </div>
@@ -526,11 +537,11 @@
     });
   });
 
+  let updatePdfList = null;
   const pdfInput = document.querySelector("[data-modal='factura'] input[name='pdf_file']");
   const processButton = document.querySelector("[data-process-pdf]");
   if (pdfInput && processButton) {
-    const fileNameLabel = document.querySelector("[data-file-name]");
-    const clearButton = document.querySelector("[data-file-clear]");
+    const fileList = document.querySelector("[data-file-list]");
 
     const formatBytes = (bytes) => {
       if (!Number.isFinite(bytes)) {
@@ -550,27 +561,57 @@
     const updateFileState = () => {
       const hasFile = pdfInput.files && pdfInput.files.length > 0;
       processButton.disabled = !hasFile;
-      if (fileNameLabel) {
-        if (hasFile) {
-          const file = pdfInput.files[0];
-          const sizeLabel = formatBytes(file.size);
-          fileNameLabel.textContent = sizeLabel
-            ? `${file.name} · ${sizeLabel}`
-            : file.name;
-        } else {
-          fileNameLabel.textContent = "Sin archivo";
-        }
+      if (!fileList) {
+        return;
       }
-      if (clearButton) {
-        clearButton.classList.toggle("is-hidden", !hasFile);
-        clearButton.disabled = !hasFile;
+      fileList.innerHTML = "";
+      if (!hasFile) {
+        const empty = document.createElement("span");
+        empty.className = "file-empty";
+        empty.textContent = "Sin archivo";
+        fileList.appendChild(empty);
+        return;
       }
+      Array.from(pdfInput.files).forEach((file, index) => {
+        const item = document.createElement("div");
+        item.className = "file-item";
+        const name = document.createElement("span");
+        name.className = "file-item__name";
+        const sizeLabel = formatBytes(file.size);
+        name.textContent = sizeLabel
+          ? `${file.name} · ${sizeLabel}`
+          : file.name;
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "file-item__remove";
+        remove.dataset.index = String(index);
+        remove.setAttribute("aria-label", `Quitar ${file.name}`);
+        remove.textContent = "×";
+        item.appendChild(name);
+        item.appendChild(remove);
+        fileList.appendChild(item);
+      });
     };
+    updatePdfList = updateFileState;
 
     pdfInput.addEventListener("change", updateFileState);
-    if (clearButton) {
-      clearButton.addEventListener("click", () => {
-        pdfInput.value = "";
+    if (fileList) {
+      fileList.addEventListener("click", (event) => {
+        const button = event.target.closest(".file-item__remove");
+        if (!button) {
+          return;
+        }
+        const index = Number(button.dataset.index);
+        if (!Number.isInteger(index)) {
+          return;
+        }
+        const transfer = new DataTransfer();
+        Array.from(pdfInput.files).forEach((file, idx) => {
+          if (idx !== index) {
+            transfer.items.add(file);
+          }
+        });
+        pdfInput.files = transfer.files;
         updateFileState();
       });
     }
@@ -780,8 +821,28 @@
     openModal("factura-view");
   };
 
+  const resetFacturaModal = () => {
+    const facturaModal = document.querySelector("[data-modal='factura']");
+    if (!facturaModal) {
+      return;
+    }
+    const form = facturaModal.querySelector("form");
+    if (form) {
+      form.reset();
+    }
+    if (pdfInput) {
+      pdfInput.value = "";
+    }
+    if (typeof updatePdfList === "function") {
+      updatePdfList();
+    }
+  };
+
   const closeModal = (modal) => {
     modal.classList.remove("is-open");
+    if (modal.dataset.modal === "factura") {
+      resetFacturaModal();
+    }
     updateBodyScroll();
   };
 
