@@ -228,6 +228,8 @@ def dashboard():
     active_tab = request.args.get("tab", "monotributistas")
     anchor_param = request.args.get("anchor")
     anchor_date = parse_anchor(anchor_param) or date.today().replace(day=1)
+    anchor_cutoff = (anchor_date.replace(day=1) + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+    anchor_cutoff_label = anchor_cutoff.strftime("%d/%m/%y")
     anchor_value = f"{anchor_date.year:04d}-{anchor_date.month:02d}"
     monotributistas_raw = Monotributista.query.order_by(Monotributista.razon_social).all()
     categorias_raw = Categoria.query.order_by(Categoria.orden).all()
@@ -312,6 +314,7 @@ def dashboard():
         detalle=detalle,
         active_tab=active_tab,
         anchor_value=anchor_value,
+        anchor_cutoff_label=anchor_cutoff_label,
         count_sube=count_sube,
         count_baja=count_baja,
         fecha_corte_label=fecha_corte_label,

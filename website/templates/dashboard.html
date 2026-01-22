@@ -22,10 +22,10 @@
     </div>
   </div>
   <div class="tabs__controls tabs__controls--topbar">
-    <button class="tab {% if active_tab == 'monotributistas' %}is-active{% endif %}" data-tab="monotributistas">Monotributista</button>
-    <button class="tab {% if active_tab == 'facturas' %}is-active{% endif %}" data-tab="facturas">Facturas</button>
-    <button class="tab {% if active_tab == 'calculo' %}is-active{% endif %}" data-tab="calculo">Calculo</button>
-    <button class="tab {% if active_tab == 'configuracion' %}is-active{% endif %}" data-tab="configuracion">Configuracion</button>
+    <button class="tab {% if active_tab == 'monotributistas' %}is-active{% endif %}" type="button" data-tab="monotributistas">Monotributista</button>
+    <button class="tab {% if active_tab == 'facturas' %}is-active{% endif %}" type="button" data-tab="facturas">Facturas</button>
+    <button class="tab {% if active_tab == 'calculo' %}is-active{% endif %}" type="button" data-tab="calculo">Calculo</button>
+    <button class="tab {% if active_tab == 'configuracion' %}is-active{% endif %}" type="button" data-tab="configuracion">Configuracion</button>
   </div>
 </div>
 {% endblock %}
@@ -260,8 +260,9 @@
           <input type="hidden" name="tab" value="calculo">
           <input type="hidden" name="monotributista" value="{{ seleccionado_id }}">
           <label class="field">
-            Periodo de corte
-            <input type="month" name="anchor" value="{{ anchor_value }}" required>
+            Periodo de corte ({{ anchor_cutoff_label }})
+            <input type="hidden" name="anchor" id="anchorMonthValue" value="{{ anchor_value }}">
+            <input type="text" id="anchorMonthDisplay" data-anchor="{{ anchor_value }}" autocomplete="off" readonly>
           </label>
           <button class="outline" type="submit">Ver periodo</button>
         </form>
@@ -787,6 +788,104 @@
     const hasOpen = document.querySelector(".modal.is-open");
     document.body.classList.toggle("modal-open", Boolean(hasOpen));
   };
+
+  const monthPickerInput = document.getElementById("anchorMonthDisplay");
+  const anchorHiddenInput = document.getElementById("anchorMonthValue");
+  if (monthPickerInput) {
+    const airDatepickerLocaleEs = {
+      days: ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"],
+      daysShort: ["Dom", "Lun", "Mar", "Mie", "Jue", "Vie", "Sab"],
+      daysMin: ["Do", "Lu", "Ma", "Mi", "Ju", "Vi", "Sa"],
+      months: [
+        "Enero",
+        "Febrero",
+        "Marzo",
+        "Abril",
+        "Mayo",
+        "Junio",
+        "Julio",
+        "Agosto",
+        "Septiembre",
+        "Octubre",
+        "Noviembre",
+        "Diciembre",
+      ],
+      monthsShort: ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"],
+      today: "Hoy",
+      clear: "Limpiar",
+      dateFormat: "dd/MM/yyyy",
+      timeFormat: "hh:mm aa",
+      firstDay: 1,
+    };
+    const parseAnchorValue = (value) => {
+      if (!value) {
+        return null;
+      }
+      const parts = value.split("-");
+      const year = Number(parts[0]);
+      const month = Number(parts[1]);
+      if (!Number.isInteger(year) || !Number.isInteger(month)) {
+        return null;
+      }
+      return new Date(year, month - 1, 1);
+    };
+
+    const anchorValue =
+      (anchorHiddenInput && anchorHiddenInput.value) ||
+      monthPickerInput.dataset.anchor ||
+      "";
+    const selectedDate = parseAnchorValue(anchorValue);
+    const formatMonthLabel = (date) => {
+      const monthName = airDatepickerLocaleEs.months[date.getMonth()] || "";
+      return `${monthName} ${date.getFullYear()}`.trim();
+    };
+    const setHiddenValue = (date) => {
+      if (!anchorHiddenInput) {
+        return;
+      }
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      anchorHiddenInput.value = `${year}-${month}`;
+    };
+
+    if (selectedDate) {
+      monthPickerInput.value = formatMonthLabel(selectedDate);
+      setHiddenValue(selectedDate);
+    }
+    if (window.AirDatepicker) {
+      const syncSelectedDate = (picked) => {
+        if (!picked) {
+          return;
+        }
+        monthPickerInput.value = formatMonthLabel(picked);
+        setHiddenValue(picked);
+      };
+      const monthPicker = new AirDatepicker(monthPickerInput, {
+        view: "months",
+        minView: "months",
+        dateFormat: "MMMM yyyy",
+        autoClose: true,
+        locale: airDatepickerLocaleEs,
+        selectedDates: selectedDate ? [selectedDate] : [],
+        onSelect: ({ date }) => {
+          const picked = Array.isArray(date) ? date[0] : date;
+          syncSelectedDate(picked);
+        },
+      });
+      if (selectedDate) {
+        syncSelectedDate(selectedDate);
+      }
+      const showPicker = () => monthPicker.show();
+      monthPickerInput.addEventListener("click", showPicker);
+      monthPickerInput.addEventListener("focus", showPicker);
+      monthPickerInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          showPicker();
+        }
+      });
+    }
+  }
 
   const openModal = (name) => {
     const modal = document.querySelector(`.modal[data-modal=\"${name}\"]`);

@@ -42,16 +42,16 @@
           <input type="text" name="importe_total" value="{{ importe_value }}" required>
         </label>
         <label class="field">
+          Concepto
+          <input type="text" name="concepto" value="{{ factura.concepto or '' }}">
+        </label>
+        <label class="field">
           Fecha DESDE
           <input type="date" name="fecha_desde" value="{{ factura.fecha_desde.isoformat() if factura.fecha_desde else '' }}">
         </label>
         <label class="field">
           Fecha HASTA
           <input type="date" name="fecha_hasta" value="{{ factura.fecha_hasta.isoformat() if factura.fecha_hasta else '' }}">
-        </label>
-        <label class="field">
-          Concepto
-          <input type="text" name="concepto" value="{{ factura.concepto or '' }}">
         </label>
       </div>
       <div class="form-actions">

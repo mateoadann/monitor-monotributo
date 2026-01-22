@@ -759,6 +759,14 @@ body {
   border-radius: 16px;
 }
 
+.calculo__period #anchorMonthDisplay {
+  cursor: pointer;
+}
+
+.air-datepicker {
+  z-index: 30;
+}
+
 .flash-stack {
   display: grid;
   gap: 10px;
