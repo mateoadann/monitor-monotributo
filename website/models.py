@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime
-from decimal import Decimal
+from datetime import datetime
 
 from flask_login import UserMixin
 from flask_sqlalchemy import SQLAlchemy
@@ -22,6 +21,36 @@ class Categoria(db.Model):
     nombre = db.Column(db.String(40), unique=True, nullable=False)
     orden = db.Column(db.Integer, nullable=False)
     tope_facturacion = db.Column(db.Numeric(14, 2), nullable=False)
+    topes = db.relationship(
+        "CategoriaTope",
+        back_populates="categoria",
+        cascade="all, delete-orphan",
+    )
+
+
+class Vigencia(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    fecha_desde = db.Column(db.Date, nullable=False)
+    fecha_hasta = db.Column(db.Date)
+    topes = db.relationship(
+        "CategoriaTope",
+        back_populates="vigencia",
+        cascade="all, delete-orphan",
+    )
+
+
+class CategoriaTope(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    vigencia_id = db.Column(db.Integer, db.ForeignKey("vigencia.id"), nullable=False)
+    categoria_id = db.Column(db.Integer, db.ForeignKey("categoria.id"), nullable=False)
+    tope_facturacion = db.Column(db.Numeric(14, 2), nullable=False)
+
+    categoria = db.relationship("Categoria", back_populates="topes")
+    vigencia = db.relationship("Vigencia", back_populates="topes")
+
+    __table_args__ = (
+        db.UniqueConstraint("vigencia_id", "categoria_id", name="uq_vigencia_categoria"),
+    )
 
 
 class Monotributista(db.Model):
@@ -97,83 +126,4 @@ def create_admin_if_missing() -> None:
 
 
 def seed_data() -> None:
-    if Categoria.query.first():
-        return
-
-    categorias = [
-        Categoria(nombre="A", orden=1, tope_facturacion=Decimal("8500000.00")),
-        Categoria(nombre="B", orden=2, tope_facturacion=Decimal("11000000.00")),
-        Categoria(nombre="C", orden=3, tope_facturacion=Decimal("13000000.00")),
-        Categoria(nombre="D", orden=4, tope_facturacion=Decimal("15000000.00")),
-        Categoria(nombre="E", orden=5, tope_facturacion=Decimal("17000000.00")),
-        Categoria(nombre="F", orden=6, tope_facturacion=Decimal("19000000.00")),
-    ]
-    db.session.add_all(categorias)
-    db.session.flush()
-
-    monotributistas = [
-        Monotributista(
-            razon_social="Gomez Servicios SRL",
-            cuit="30-71234567-2",
-            clave_fiscal="12345678",
-            categoria_actual_id=categorias[0].id,
-            categoria_corresponde_id=categorias[1].id,
-        ),
-        Monotributista(
-            razon_social="Lucia Perez",
-            cuit="27-28765432-9",
-            clave_fiscal="87654321",
-            categoria_actual_id=categorias[2].id,
-            categoria_corresponde_id=categorias[2].id,
-        ),
-        Monotributista(
-            razon_social="Estudio Valdez",
-            cuit="30-70111222-8",
-            clave_fiscal="55667788",
-            categoria_actual_id=categorias[5].id,
-            categoria_corresponde_id=categorias[4].id,
-        ),
-    ]
-    db.session.add_all(monotributistas)
-    db.session.flush()
-
-    facturas = [
-        Factura(
-            monotributista_id=monotributistas[0].id,
-            fecha=date(2025, 2, 5),
-            tipo_comp="B",
-            numero_comp="0002-00000147",
-            cuit_receptor="30-70999888-1",
-            razon_social_receptor="Insumos Atlas SA",
-            importe_total=Decimal("1245300.50"),
-            fecha_desde=date(2025, 2, 1),
-            fecha_hasta=date(2025, 2, 28),
-            concepto="Servicios de mantenimiento",
-        ),
-        Factura(
-            monotributista_id=monotributistas[1].id,
-            fecha=date(2025, 3, 18),
-            tipo_comp="NCB",
-            numero_comp="0003-00000412",
-            cuit_receptor="27-10101010-7",
-            razon_social_receptor="Taller Sur",
-            importe_total=Decimal("-92000.00"),
-            fecha_desde=date(2025, 3, 15),
-            fecha_hasta=date(2025, 3, 20),
-            concepto="Nota de credito parcial",
-        ),
-        Factura(
-            monotributista_id=monotributistas[2].id,
-            fecha=date(2025, 4, 12),
-            tipo_comp="B",
-            numero_comp="0001-00007801",
-            cuit_receptor="30-60606060-2",
-            razon_social_receptor="Consultora Norte",
-            importe_total=Decimal("540000.00"),
-            fecha_desde=date(2025, 4, 1),
-            fecha_hasta=date(2025, 4, 30),
-            concepto="Asesoria fiscal",
-        ),
-    ]
-    db.session.add_all(facturas)
-    db.session.commit()
+    return

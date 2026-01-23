@@ -279,38 +279,38 @@
   <div class="tabs__panel {% if active_tab == 'configuracion' %}is-active{% endif %}" id="configuracion">
     <div class="panel__header">
       <h2>Configuracion</h2>
-      <span class="panel__hint">Define categorias y topes de facturacion.</span>
+      <span class="panel__hint">Define vigencias y topes por categoria.</span>
     </div>
-    <form class="panel__form" method="post" action="{{ url_for('main.create_categoria') }}" data-confirm="Confirmar creacion de la categoria?">
+    <form class="panel__form" method="post" action="{{ url_for('main.create_vigencia') }}" data-confirm="Confirmar creacion de la vigencia?">
       <div class="form-grid">
         <label class="field">
-          Categoria
-          <input type="text" name="nombre" placeholder="A" required>
+          Vigencia desde
+          <input type="date" name="vigencia_desde" required>
         </label>
         <label class="field">
-          Tope de facturacion
-          <input type="text" name="tope_facturacion" placeholder="8.500.000,00" required>
+          Vigencia hasta
+          <input type="date" name="vigencia_hasta">
         </label>
       </div>
-      <button class="primary" type="submit">Crear categoria</button>
+      <button class="primary" type="submit">Crear vigencia</button>
     </form>
     <div class="table">
       <div class="table__row table__head table__row--config">
-        <span>Categoria</span>
-        <span>Tope</span>
+        <span>Vigencia desde</span>
+        <span>Vigencia hasta</span>
         <span>Acciones</span>
       </div>
-      {% for categoria in categorias_table %}
+      {% for vigencia in vigencias_table %}
       <div class="table__row table__row--config">
-        <span>{{ categoria.nombre }}</span>
-        <span>{{ categoria.tope }}</span>
+        <span>{{ vigencia.vigencia_desde }}</span>
+        <span>{{ vigencia.vigencia_hasta }}</span>
         <span class="row-actions">
-          <a class="icon-link" href="{{ url_for('main.edit_categoria', categoria_id=categoria.id) }}" aria-label="Editar">
+          <a class="icon-link" href="{{ url_for('main.edit_vigencia', vigencia_id=vigencia.id) }}" aria-label="Editar">
             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
               <path d="M4 17.25V20h2.75l8.1-8.1-2.75-2.75-8.1 8.1zM20.7 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" fill="currentColor"/>
             </svg>
           </a>
-          <form method="post" action="{{ url_for('main.delete_categoria', categoria_id=categoria.id) }}" data-confirm="Confirmar eliminacion de la categoria?">
+          <form method="post" action="{{ url_for('main.delete_vigencia', vigencia_id=vigencia.id) }}" data-confirm="Confirmar eliminacion de la vigencia?">
             <button class="icon-link icon-link--danger" type="submit" aria-label="Eliminar" title="Eliminar">
               <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                 <path d="M6 7h12l-1 13a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L6 7zm3-4h6l1 2H8l1-2z" fill="currentColor"/>

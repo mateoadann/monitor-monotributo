@@ -2,21 +2,42 @@
 {% block content %}
 <section class="form-page">
   <div class="form-card">
-    <h1>Editar categoria</h1>
-    <form method="post" class="panel__form" data-confirm="Confirmar guardado de la categoria?">
+    <h1>Editar vigencia</h1>
+    <form method="post" class="panel__form" data-confirm="Confirmar guardado de la vigencia?">
       <div class="form-grid">
         <label class="field">
-          Categoria
-          <input type="text" name="nombre" value="{{ categoria.nombre }}" required>
+          Vigencia desde
+          <input type="date" name="vigencia_desde" value="{{ vigencia_desde_value }}" required>
         </label>
         <label class="field">
-          Tope de facturacion
-          <input type="text" name="tope_facturacion" value="{{ tope_value }}" required>
+          Vigencia hasta
+          <input type="date" name="vigencia_hasta" value="{{ vigencia_hasta_value }}">
         </label>
       </div>
       <div class="form-actions">
         <button class="primary" type="submit">Guardar cambios</button>
         <a class="ghost-link" href="{{ url_for('main.dashboard', tab='configuracion') }}">Volver</a>
+      </div>
+    </form>
+
+    <h2>Topes por categoria</h2>
+    <form method="post" action="{{ url_for('main.update_vigencia_topes', vigencia_id=vigencia.id) }}" data-confirm="Confirmar actualizacion de topes?">
+      <div class="table">
+        <div class="table__row table__head table__row--topes">
+          <span>Categoria</span>
+          <span>Tope</span>
+        </div>
+        {% for tope in topes_table %}
+        <div class="table__row table__row--topes">
+          <span>{{ tope.categoria }}</span>
+          <span>
+            <input type="text" name="tope_{{ tope.categoria_id }}" value="{{ tope.tope_value }}" placeholder="0,00" required>
+          </span>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="form-actions">
+        <button class="primary" type="submit">Guardar topes</button>
       </div>
     </form>
   </div>

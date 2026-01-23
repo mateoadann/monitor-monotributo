@@ -12,7 +12,15 @@ from rq import Retry
 from sqlalchemy import or_
 from werkzeug.utils import secure_filename
 
-from website.models import Categoria, Factura, FacturaImport, Monotributista, db
+from website.models import (
+    Categoria,
+    CategoriaTope,
+    Factura,
+    FacturaImport,
+    Monotributista,
+    Vigencia,
+    db,
+)
 from website.pdf_jobs import process_factura_import
 from website.queue import get_queue
 
@@ -32,6 +40,8 @@ MONTH_LABELS = [
     "Nov",
     "Dic",
 ]
+
+CATEGORY_CODES = [chr(code) for code in range(ord("A"), ord("K") + 1)]
 
 
 def parse_date(value: str | None):
@@ -94,6 +104,18 @@ def format_currency(value: Decimal | None) -> str:
     return f"{sign}$ {whole_str},{cents:02d}"
 
 
+def format_decimal_input(value: Decimal | None) -> str:
+    if value is None:
+        return ""
+    value = value.quantize(Decimal("0.01"))
+    sign = "-" if value < 0 else ""
+    value = abs(value)
+    whole = int(value)
+    cents = int((value - whole) * 100)
+    whole_str = f"{whole:,}".replace(",", ".")
+    return f"{sign}{whole_str},{cents:02d}"
+
+
 def last_12_months(anchor: date):
     months = []
     year = anchor.year
@@ -117,14 +139,64 @@ def parse_anchor(value: str | None):
         return None
 
 
-def categoria_por_total(total: Decimal, categorias: list[Categoria]):
-    if not categorias:
+def ensure_categorias() -> list[Categoria]:
+    existentes = {categoria.nombre: categoria for categoria in Categoria.query.all()}
+    categorias = []
+    for index, codigo in enumerate(CATEGORY_CODES, start=1):
+        categoria = existentes.get(codigo)
+        if not categoria:
+            categoria = Categoria(
+                nombre=codigo,
+                orden=index,
+                tope_facturacion=Decimal("0.00"),
+            )
+            db.session.add(categoria)
+        else:
+            categoria.orden = index
+        categorias.append(categoria)
+    db.session.flush()
+    return categorias
+
+
+def obtener_vigencia_para_fecha(anchor: date) -> Vigencia | None:
+    if not anchor:
+        return None
+    return (
+        Vigencia.query.filter(
+            Vigencia.fecha_desde <= anchor,
+            or_(Vigencia.fecha_hasta.is_(None), Vigencia.fecha_hasta >= anchor),
+        )
+        .order_by(Vigencia.fecha_desde.desc())
+        .first()
+    )
+
+
+def obtener_topes_vigencia(vigencia: Vigencia | None) -> list[CategoriaTope]:
+    if not vigencia:
+        return []
+    return (
+        CategoriaTope.query.join(Categoria)
+        .filter(CategoriaTope.vigencia_id == vigencia.id)
+        .order_by(Categoria.orden)
+        .all()
+    )
+
+
+def categoria_por_total(total: Decimal, topes: list[CategoriaTope]):
+    if not topes:
+        return None
+    if all(tope.tope_facturacion == 0 for tope in topes):
         return None
     total = total.quantize(Decimal("0.01"))
-    for categoria in categorias:
-        if total <= categoria.tope_facturacion:
-            return categoria
-    return categorias[-1]
+    topes_sorted = sorted(topes, key=lambda tope: tope.tope_facturacion)
+    for tope in topes_sorted:
+        if total <= tope.tope_facturacion:
+            return tope.categoria
+    return topes_sorted[-1].categoria
+
+
+def topes_por_categoria(topes: list[CategoriaTope]) -> dict[int, CategoriaTope]:
+    return {tope.categoria_id: tope for tope in topes}
 
 
 def calcular_totales(monotributista: Monotributista, anchor: date):
@@ -181,22 +253,28 @@ def calcular_totales(monotributista: Monotributista, anchor: date):
 
 
 def build_calculo(
-    monotributista: Monotributista, anchor: date, categorias: list[Categoria]
+    monotributista: Monotributista, anchor: date, topes: list[CategoriaTope]
 ):
     month_totals, total = calcular_totales(monotributista, anchor)
+    topes_map = topes_por_categoria(topes)
     categoria_actual = monotributista.categoria_actual
-    categoria_corresponde = categoria_por_total(total, categorias) or categoria_actual
+    categoria_corresponde = categoria_por_total(total, topes) or categoria_actual
     estado = estado_categoria(categoria_actual, categoria_corresponde)
+
+    tope_actual = topes_map.get(categoria_actual.id) if categoria_actual else None
+    tope_corresponde = (
+        topes_map.get(categoria_corresponde.id) if categoria_corresponde else None
+    )
 
     return {
         "categoria_actual": categoria_actual.nombre if categoria_actual else "-",
         "categoria_corresponde": categoria_corresponde.nombre if categoria_corresponde else "-",
         "tope_actual": (
-            format_currency(categoria_actual.tope_facturacion) if categoria_actual else "-"
+            format_currency(tope_actual.tope_facturacion) if tope_actual else "-"
         ),
         "tope_corresponde": (
-            format_currency(categoria_corresponde.tope_facturacion)
-            if categoria_corresponde
+            format_currency(tope_corresponde.tope_facturacion)
+            if tope_corresponde
             else "-"
         ),
         "estado_categoria": estado,
@@ -216,10 +294,43 @@ def estado_categoria(actual: Categoria | None, corresponde: Categoria | None) ->
 
 
 def recalc_categoria_orden() -> None:
-    categorias = Categoria.query.order_by(Categoria.tope_facturacion).all()
-    for index, categoria in enumerate(categorias, start=1):
-        categoria.orden = index
-    db.session.commit()
+    changed = False
+    for index, codigo in enumerate(CATEGORY_CODES, start=1):
+        categoria = Categoria.query.filter_by(nombre=codigo).first()
+        if not categoria:
+            continue
+        if categoria.orden != index:
+            categoria.orden = index
+            changed = True
+    if changed:
+        db.session.commit()
+
+
+def rangos_se_solapan(
+    desde: date, hasta: date | None, otro_desde: date, otro_hasta: date | None
+) -> bool:
+    fin = hasta or date.max
+    otro_fin = otro_hasta or date.max
+    return desde <= otro_fin and otro_desde <= fin
+
+
+def validar_vigencia_sin_solapamiento(
+    fecha_desde: date,
+    fecha_hasta: date | None,
+    vigencia_id: int | None = None,
+) -> bool:
+    query = Vigencia.query
+    if vigencia_id:
+        query = query.filter(Vigencia.id != vigencia_id)
+    for vigencia in query.all():
+        if rangos_se_solapan(
+            fecha_desde,
+            fecha_hasta,
+            vigencia.fecha_desde,
+            vigencia.fecha_hasta,
+        ):
+            return False
+    return True
 
 
 @main_bp.route("/")
@@ -233,16 +344,19 @@ def dashboard():
     anchor_value = f"{anchor_date.year:04d}-{anchor_date.month:02d}"
     monotributistas_raw = Monotributista.query.order_by(Monotributista.razon_social).all()
     categorias_raw = Categoria.query.order_by(Categoria.orden).all()
-    categorias_sorted = sorted(categorias_raw, key=lambda item: item.tope_facturacion)
     facturas_raw = Factura.query.order_by(Factura.fecha.desc()).all()
+    vigencia_anchor = obtener_vigencia_para_fecha(anchor_date)
+    topes_anchor = obtener_topes_vigencia(vigencia_anchor)
 
     anchor_actual = date.today().replace(day=1) - timedelta(days=1)
+    vigencia_actual = obtener_vigencia_para_fecha(anchor_actual)
+    topes_actual = obtener_topes_vigencia(vigencia_actual)
     monotributistas = []
     count_sube = 0
     count_baja = 0
     for item in monotributistas_raw:
         _, total_actual = calcular_totales(item, anchor_actual)
-        corresponde = categoria_por_total(total_actual, categorias_sorted) or item.categoria_actual
+        corresponde = categoria_por_total(total_actual, topes_actual) or item.categoria_actual
         estado = estado_categoria(item.categoria_actual, corresponde)
         if estado == "sube":
             count_sube += 1
@@ -287,11 +401,7 @@ def dashboard():
         seleccionado = Monotributista.query.get(int(seleccionado_id))
     if not seleccionado and monotributistas_raw:
         seleccionado = monotributistas_raw[0]
-    detalle = (
-        build_calculo(seleccionado, anchor_date, categorias_sorted)
-        if seleccionado
-        else None
-    )
+    detalle = build_calculo(seleccionado, anchor_date, topes_anchor) if seleccionado else None
 
     fecha_corte_label = anchor_actual.strftime("%d/%m/%y")
 
@@ -300,14 +410,13 @@ def dashboard():
         monotributistas=monotributistas,
         facturas=facturas,
         categorias=categorias_raw,
-        categorias_table=[
+        vigencias_table=[
             {
-                "id": categoria.id,
-                "nombre": categoria.nombre,
-                "orden": categoria.orden,
-                "tope": format_currency(categoria.tope_facturacion),
+                "id": vigencia.id,
+                "vigencia_desde": format_date(vigencia.fecha_desde),
+                "vigencia_hasta": format_date(vigencia.fecha_hasta) or "Sin fin",
             }
-            for categoria in categorias_raw
+            for vigencia in Vigencia.query.order_by(Vigencia.fecha_desde.desc()).all()
         ],
         monotributistas_select=monotributistas_raw,
         seleccionado_id=seleccionado.id if seleccionado else None,
@@ -573,73 +682,125 @@ def delete_factura(factura_id):
     return redirect(url_for("main.dashboard", tab="facturas"))
 
 
-@main_bp.post("/categorias/create")
+@main_bp.post("/vigencias/create")
 @login_required
-def create_categoria():
-    nombre = request.form.get("nombre", "").strip().upper()
-    tope_facturacion = parse_decimal(request.form.get("tope_facturacion"))
+def create_vigencia():
+    fecha_desde = parse_date(request.form.get("vigencia_desde"))
+    fecha_hasta = parse_date(request.form.get("vigencia_hasta"))
 
-    if not nombre or tope_facturacion is None:
-        flash("Completa los campos requeridos para crear la categoria.", "error")
+    if not fecha_desde:
+        flash("Completa los campos requeridos para crear la vigencia.", "error")
         return redirect(url_for("main.dashboard", tab="configuracion"))
 
-    if Categoria.query.filter_by(nombre=nombre).first():
-        flash("La categoria ya existe.", "error")
+    if fecha_hasta and fecha_hasta < fecha_desde:
+        flash("La vigencia hasta debe ser posterior a la vigencia desde.", "error")
         return redirect(url_for("main.dashboard", tab="configuracion"))
 
-    categoria = Categoria(
-        nombre=nombre,
-        orden=0,
-        tope_facturacion=tope_facturacion,
-    )
-    db.session.add(categoria)
+    if not validar_vigencia_sin_solapamiento(fecha_desde, fecha_hasta):
+        flash("La vigencia se superpone con otra existente.", "error")
+        return redirect(url_for("main.dashboard", tab="configuracion"))
+
+    categorias = ensure_categorias()
+    vigencia = Vigencia(fecha_desde=fecha_desde, fecha_hasta=fecha_hasta)
+    db.session.add(vigencia)
+    db.session.flush()
+
+    topes = [
+        CategoriaTope(
+            vigencia_id=vigencia.id,
+            categoria_id=categoria.id,
+            tope_facturacion=Decimal("0.00"),
+        )
+        for categoria in categorias
+    ]
+    db.session.add_all(topes)
     db.session.commit()
     recalc_categoria_orden()
-    flash("Categoria creada.", "success")
+    flash("Vigencia creada.", "success")
     return redirect(url_for("main.dashboard", tab="configuracion"))
 
 
-@main_bp.route("/categorias/<int:categoria_id>/edit", methods=["GET", "POST"])
+@main_bp.route("/vigencias/<int:vigencia_id>/edit", methods=["GET", "POST"])
 @login_required
-def edit_categoria(categoria_id):
-    categoria = Categoria.query.get_or_404(categoria_id)
+def edit_vigencia(vigencia_id):
+    vigencia = Vigencia.query.get_or_404(vigencia_id)
     if request.method == "POST":
-        nombre = request.form.get("nombre", "").strip().upper()
-        tope_facturacion = parse_decimal(request.form.get("tope_facturacion"))
+        fecha_desde = parse_date(request.form.get("vigencia_desde"))
+        fecha_hasta = parse_date(request.form.get("vigencia_hasta"))
 
-        if not nombre or tope_facturacion is None:
+        if not fecha_desde:
             flash("Completa los campos requeridos para editar.", "error")
+        elif fecha_hasta and fecha_hasta < fecha_desde:
+            flash("La vigencia hasta debe ser posterior a la vigencia desde.", "error")
         else:
-            categoria.nombre = nombre
-            categoria.tope_facturacion = tope_facturacion
-            db.session.commit()
-            recalc_categoria_orden()
-            flash("Categoria actualizada.", "success")
-            return redirect(url_for("main.dashboard", tab="configuracion"))
+            if not validar_vigencia_sin_solapamiento(
+                fecha_desde, fecha_hasta, vigencia.id
+            ):
+                flash("La vigencia se superpone con otra existente.", "error")
+            else:
+                vigencia.fecha_desde = fecha_desde
+                vigencia.fecha_hasta = fecha_hasta
+                db.session.commit()
+                flash("Vigencia actualizada.", "success")
+                return redirect(url_for("main.dashboard", tab="configuracion"))
+
+    topes = (
+        CategoriaTope.query.join(Categoria)
+        .filter(CategoriaTope.vigencia_id == vigencia.id)
+        .order_by(Categoria.orden)
+        .all()
+    )
 
     return render_template(
         "edit_categoria.html",
-        categoria=categoria,
-        tope_value=f"{categoria.tope_facturacion:.2f}",
+        vigencia=vigencia,
+        vigencia_desde_value=vigencia.fecha_desde.isoformat(),
+        vigencia_hasta_value=vigencia.fecha_hasta.isoformat() if vigencia.fecha_hasta else "",
+        topes_table=[
+            {
+                "categoria": tope.categoria.nombre,
+                "categoria_id": tope.categoria_id,
+                "tope_value": format_decimal_input(tope.tope_facturacion),
+            }
+            for tope in topes
+        ],
     )
 
 
-@main_bp.post("/categorias/<int:categoria_id>/delete")
+@main_bp.post("/vigencias/<int:vigencia_id>/topes")
 @login_required
-def delete_categoria(categoria_id):
-    categoria = Categoria.query.get_or_404(categoria_id)
-    usage = Monotributista.query.filter(
-        or_(
-            Monotributista.categoria_actual_id == categoria.id,
-            Monotributista.categoria_corresponde_id == categoria.id,
-        )
-    ).first()
-    if usage:
-        flash("No se puede eliminar una categoria en uso.", "error")
-        return redirect(url_for("main.dashboard", tab="configuracion"))
+def update_vigencia_topes(vigencia_id):
+    vigencia = Vigencia.query.get_or_404(vigencia_id)
+    topes = (
+        CategoriaTope.query.join(Categoria)
+        .filter(CategoriaTope.vigencia_id == vigencia.id)
+        .order_by(Categoria.orden)
+        .all()
+    )
+    errores = False
+    for tope in topes:
+        raw_value = request.form.get(f"tope_{tope.categoria_id}", "").strip()
+        parsed = parse_decimal(raw_value)
+        if parsed is None:
+            errores = True
+            break
+        tope.tope_facturacion = parsed
 
-    db.session.delete(categoria)
+    if errores:
+        db.session.rollback()
+        flash("Completa los topes con un formato valido.", "error")
+        return redirect(url_for("main.edit_vigencia", vigencia_id=vigencia.id))
+
     db.session.commit()
-    recalc_categoria_orden()
-    flash("Categoria eliminada.", "success")
+    flash("Topes actualizados.", "success")
+    return redirect(url_for("main.edit_vigencia", vigencia_id=vigencia.id))
+
+
+@main_bp.post("/vigencias/<int:vigencia_id>/delete")
+@login_required
+def delete_vigencia(vigencia_id):
+    vigencia = Vigencia.query.get_or_404(vigencia_id)
+    db.session.delete(vigencia)
+    db.session.commit()
+    flash("Vigencia eliminada.", "success")
     return redirect(url_for("main.dashboard", tab="configuracion"))
