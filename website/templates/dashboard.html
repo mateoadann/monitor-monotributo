@@ -322,6 +322,191 @@
       {% endfor %}
     </div>
   </div>
+
+  <div class="tabs__panel {% if active_tab == 'ayuda' %}is-active{% endif %}" id="ayuda">
+    <div class="panel__header">
+      <h2>Centro de ayuda</h2>
+      <span class="panel__hint">Informacion sobre monotributo, calculos y uso del sistema.</span>
+    </div>
+
+    <div class="help-content">
+      <nav class="help-nav">
+        <a href="#help-monotributo" class="help-nav__link">Que es el Monotributo</a>
+        <a href="#help-categorias" class="help-nav__link">Categorias y topes</a>
+        <a href="#help-calculo" class="help-nav__link">Calculo de facturacion</a>
+        <a href="#help-prorrateo" class="help-nav__link">Prorrateo</a>
+        <a href="#help-vigencias" class="help-nav__link">Vigencias</a>
+        <a href="#help-comprobantes" class="help-nav__link">Tipos de comprobantes</a>
+        <a href="#help-estados" class="help-nav__link">Estados de categoria</a>
+        <a href="#help-faq" class="help-nav__link">Preguntas frecuentes</a>
+      </nav>
+
+      <div class="help-sections">
+        <section class="help-section" id="help-monotributo">
+          <h3>Que es el Monotributo</h3>
+          <p>El <strong>Monotributo</strong> es un regimen tributario simplificado de Argentina que unifica el pago de impuestos (IVA, Ganancias y aportes jubilatorios) en una cuota fija mensual. Esta disenado para pequenos contribuyentes como trabajadores independientes, profesionales y comerciantes.</p>
+          <p>Las personas inscriptas en este regimen se denominan <strong>monotributistas</strong> y no tributan IVA como los "Responsables Inscriptos", sino que emiten facturas tipo C o E (exportacion).</p>
+          <div class="help-highlight">
+            <strong>Importante:</strong> La categoria de monotributo se determina principalmente por el tope de facturacion anual. Si se supera el tope de la categoria actual, corresponde recategorizarse a una categoria superior.
+          </div>
+        </section>
+
+        <section class="help-section" id="help-categorias">
+          <h3>Categorias y topes</h3>
+          <p>El monotributo tiene categorias identificadas con letras de la <strong>A</strong> a la <strong>K</strong>, ordenadas de menor a mayor segun el tope de facturacion permitido:</p>
+          <ul>
+            <li><strong>Categoria A:</strong> Tope mas bajo, ideal para quienes recien comienzan.</li>
+            <li><strong>Categorias B a J:</strong> Topes intermedios progresivos.</li>
+            <li><strong>Categoria K:</strong> Tope mas alto dentro del regimen.</li>
+          </ul>
+          <p>Cada categoria tiene un <strong>tope de facturacion anual</strong> que se actualiza periodicamente por AFIP/ARCA. Si la facturacion acumulada de los ultimos 12 meses supera el tope de tu categoria actual, debes recategorizarte.</p>
+          <div class="help-highlight">
+            <strong>Ejemplo:</strong> Si estas en categoria A con tope de $8.500.000 y tu facturacion anual llega a $9.000.000, corresponde que pases a categoria B.
+          </div>
+        </section>
+
+        <section class="help-section" id="help-calculo">
+          <h3>Calculo de facturacion anual</h3>
+          <p>El sistema calcula la facturacion considerando una <strong>ventana movil de 12 meses</strong> hacia atras desde la fecha de corte seleccionada.</p>
+          <h4>Como se calcula</h4>
+          <ol>
+            <li><strong>Se suman todas las facturas</strong> emitidas en el periodo.</li>
+            <li><strong>Se restan las notas de credito</strong> del mismo periodo.</li>
+            <li>El resultado es el <strong>total anual acumulado</strong>.</li>
+          </ol>
+          <h4>Fecha de corte</h4>
+          <p>La fecha de corte determina el fin del periodo de calculo. Por ejemplo:</p>
+          <ul>
+            <li>Si la fecha de corte es <strong>31/12/2025</strong>, se considera del 01/01/2025 al 31/12/2025.</li>
+            <li>Si la fecha de corte es <strong>30/06/2025</strong>, se considera del 01/07/2024 al 30/06/2025.</li>
+          </ul>
+          <div class="help-highlight">
+            <strong>Nota:</strong> En la pestana "Calculo" podes seleccionar diferentes periodos de corte para simular escenarios futuros o revisar periodos anteriores.
+          </div>
+        </section>
+
+        <section class="help-section" id="help-prorrateo">
+          <h3>Prorrateo de facturas</h3>
+          <p>Cuando una factura tiene un rango de fechas (<strong>Fecha Desde</strong> y <strong>Fecha Hasta</strong>) que abarca mas de un mes, el sistema aplica un <strong>prorrateo diario</strong> para distribuir el importe entre los meses correspondientes.</p>
+          <h4>Como funciona</h4>
+          <ol>
+            <li>Se calcula el <strong>total de dias</strong> del rango (incluyendo ambos extremos).</li>
+            <li>Se divide el importe total por la cantidad de dias para obtener el <strong>importe diario</strong>.</li>
+            <li>Se asigna a cada mes el importe correspondiente segun los dias que caen en ese mes.</li>
+          </ol>
+          <h4>Ejemplo practico</h4>
+          <div class="help-example">
+            <p><strong>Factura:</strong> $220.000</p>
+            <p><strong>Fecha Desde:</strong> 20/03/2025 | <strong>Fecha Hasta:</strong> 10/04/2025</p>
+            <ul>
+              <li>Total de dias: 22 (del 20/03 al 10/04 inclusive)</li>
+              <li>Importe diario: $10.000</li>
+              <li>Dias en marzo: 12 (del 20 al 31) = <strong>$120.000</strong></li>
+              <li>Dias en abril: 10 (del 1 al 10) = <strong>$100.000</strong></li>
+            </ul>
+          </div>
+          <div class="help-highlight">
+            <strong>Sin prorrateo:</strong> Si Fecha Desde y Fecha Hasta estan dentro del mismo mes, el importe se asigna completo a ese mes.
+          </div>
+        </section>
+
+        <section class="help-section" id="help-vigencias">
+          <h3>Vigencias y topes historicos</h3>
+          <p>Los topes de facturacion por categoria <strong>cambian periodicamente</strong> segun las actualizaciones de AFIP/ARCA. El sistema permite registrar multiples vigencias para calcular correctamente segun los topes que aplicaban en cada momento.</p>
+          <h4>Que es una vigencia</h4>
+          <p>Una vigencia define un periodo de tiempo durante el cual aplican determinados topes de facturacion para cada categoria.</p>
+          <ul>
+            <li><strong>Vigencia Desde:</strong> Fecha a partir de la cual aplican los topes.</li>
+            <li><strong>Vigencia Hasta:</strong> Fecha hasta la cual aplican (puede quedar abierta si es la vigencia actual).</li>
+          </ul>
+          <h4>Como se usa en el calculo</h4>
+          <p>Al calcular la categoria sugerida, el sistema busca la vigencia que corresponde a la fecha de corte seleccionada y usa los topes de esa vigencia para determinar la categoria.</p>
+          <div class="help-highlight">
+            <strong>Configuracion:</strong> Podes crear y editar vigencias desde la pestana "Configuracion". Las vigencias no pueden superponerse entre si.
+          </div>
+        </section>
+
+        <section class="help-section" id="help-comprobantes">
+          <h3>Tipos de comprobantes</h3>
+          <p>El sistema maneja los siguientes tipos de comprobantes:</p>
+          <div class="help-cards">
+            <div class="help-card">
+              <h4>Factura C</h4>
+              <p>Comprobante estandar para monotributistas. <strong>Suma</strong> al total de facturacion.</p>
+            </div>
+            <div class="help-card">
+              <h4>Nota de Credito C (NC)</h4>
+              <p>Comprobante que anula total o parcialmente una factura. <strong>Resta</strong> del total de facturacion.</p>
+            </div>
+            <div class="help-card">
+              <h4>Factura E (Exportacion)</h4>
+              <p>Para operaciones de exportacion de servicios. Se registra en moneda extranjera y se convierte a pesos usando el tipo de cambio del comprobante.</p>
+            </div>
+          </div>
+          <div class="help-highlight">
+            <strong>Carga automatica:</strong> Al subir un PDF de factura, el sistema extrae automaticamente los datos incluyendo el tipo de comprobante.
+          </div>
+        </section>
+
+        <section class="help-section" id="help-estados">
+          <h3>Estados de categoria</h3>
+          <p>El sistema compara la <strong>categoria actual</strong> del monotributista con la <strong>categoria que corresponde</strong> segun su facturacion, y muestra un indicador visual:</p>
+          <div class="help-estados">
+            <div class="help-estado help-estado--sube">
+              <span class="badge badge--sube">Sube</span>
+              <p>La facturacion supera el tope de la categoria actual. <strong>Requiere recategorizacion a una categoria superior.</strong></p>
+            </div>
+            <div class="help-estado help-estado--mantiene">
+              <span class="badge badge--mantiene">Mantiene</span>
+              <p>La facturacion esta dentro del tope. <strong>No requiere cambios.</strong></p>
+            </div>
+            <div class="help-estado help-estado--baja">
+              <span class="badge badge--baja">Baja</span>
+              <p>La facturacion permite estar en una categoria inferior. <strong>Puede recategorizarse para pagar menos.</strong></p>
+            </div>
+          </div>
+        </section>
+
+        <section class="help-section" id="help-faq">
+          <h3>Preguntas frecuentes</h3>
+          <div class="help-faq">
+            <details class="faq-item">
+              <summary>Como cargo una factura desde PDF?</summary>
+              <p>En la pestana "Facturas", hace clic en "Cargar factura". Podes seleccionar uno o varios archivos PDF y presionar "Procesar Factura". El sistema extraera automaticamente los datos del comprobante. Si algun dato no se detecta correctamente, podes editarlo manualmente.</p>
+            </details>
+            <details class="faq-item">
+              <summary>Que pasa si mi factura tiene fechas en diferentes meses?</summary>
+              <p>El sistema aplica prorrateo automatico. El importe se distribuye proporcionalmente entre los meses segun la cantidad de dias que abarca cada uno. Ver seccion "Prorrateo" para mas detalles.</p>
+            </details>
+            <details class="faq-item">
+              <summary>Como se determina la categoria sugerida?</summary>
+              <p>Se suma la facturacion de los ultimos 12 meses (restando notas de credito) y se compara con los topes de cada categoria vigente. La categoria sugerida es la minima cuyo tope sea mayor o igual al total facturado.</p>
+            </details>
+            <details class="faq-item">
+              <summary>Puedo simular diferentes periodos de corte?</summary>
+              <p>Si. En la pestana "Calculo", usa el selector de periodo para elegir diferentes fechas de corte. Esto te permite proyectar como quedaria tu categoria en meses futuros o revisar periodos anteriores.</p>
+            </details>
+            <details class="faq-item">
+              <summary>Que son las vigencias y por que son importantes?</summary>
+              <p>Los topes de cada categoria cambian periodicamente segun actualizaciones de AFIP/ARCA. Las vigencias permiten registrar estos cambios historicos para que el calculo use siempre los topes correctos segun la fecha de corte.</p>
+            </details>
+            <details class="faq-item">
+              <summary>Como afectan las notas de credito al calculo?</summary>
+              <p>Las notas de credito restan del total de facturacion. Si emitiste una factura por $100.000 y luego una nota de credito por $20.000, el neto es $80.000. El sistema detecta automaticamente las notas de credito por su tipo (NC) y las procesa como valores negativos.</p>
+            </details>
+            <details class="faq-item">
+              <summary>Que significa el indicador "Alerta" en el dashboard?</summary>
+              <p>Los indicadores de alerta muestran cuantos monotributistas requieren atencion: el indicador rojo (flecha hacia abajo) muestra cuantos deben <strong>subir</strong> de categoria, y el amarillo muestra cuantos podrian <strong>bajar</strong>.</p>
+            </details>
+            <details class="faq-item">
+              <summary>Como se procesan las facturas de exportacion (tipo E)?</summary>
+              <p>Las facturas tipo E se emiten en moneda extranjera. El sistema extrae el importe en dolares y el tipo de cambio del PDF, luego calcula el equivalente en pesos para sumarlo a la facturacion anual.</p>
+            </details>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
 </section>
 
 <div class="modal" data-modal="monotributista">
