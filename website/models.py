@@ -114,7 +114,7 @@ def authenticate(username: str, password: str) -> User | None:
 def get_user_by_id(user_id: str) -> User | None:
     if not user_id:
         return None
-    return User.query.get(int(user_id))
+    return db.session.get(User, int(user_id))
 
 
 def create_admin_if_missing() -> None:

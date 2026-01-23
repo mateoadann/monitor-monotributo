@@ -398,7 +398,7 @@ def dashboard():
     seleccionado_id = request.args.get("monotributista")
     seleccionado = None
     if seleccionado_id:
-        seleccionado = Monotributista.query.get(int(seleccionado_id))
+        seleccionado = db.session.get(Monotributista, int(seleccionado_id))
     if not seleccionado and monotributistas_raw:
         seleccionado = monotributistas_raw[0]
     detalle = build_calculo(seleccionado, anchor_date, topes_anchor) if seleccionado else None

@@ -40,7 +40,7 @@ def match_monotributista(cuit: str | None, razon: str | None) -> int | None:
 def process_factura_import(import_id: int) -> None:
     app = create_app()
     with app.app_context():
-        factura_import = FacturaImport.query.get(import_id)
+        factura_import = db.session.get(FacturaImport, import_id)
         if not factura_import:
             return
         factura_import.status = "processing"

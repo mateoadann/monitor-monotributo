@@ -6,27 +6,39 @@ services:
     ports:
       - "5001:5000"
     environment:
-      DATABASE_URL: sqlite:////app/monitor.db
+      DATABASE_URL: postgresql+psycopg2://monitor:monitor@postgres:5432/monitor
       SECRET_KEY: dev-change-me
       REDIS_URL: redis://redis:6379/0
     volumes:
-      - ./monitor.db:/app/monitor.db
       - ./uploads:/app/uploads
     depends_on:
+      - postgres
       - redis
 
   worker:
     build: .
     command: ["python", "worker.py"]
     environment:
-      DATABASE_URL: sqlite:////app/monitor.db
+      DATABASE_URL: postgresql+psycopg2://monitor:monitor@postgres:5432/monitor
       SECRET_KEY: dev-change-me
       REDIS_URL: redis://redis:6379/0
     volumes:
-      - ./monitor.db:/app/monitor.db
       - ./uploads:/app/uploads
     depends_on:
+      - postgres
       - redis
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: monitor
+      POSTGRES_USER: monitor
+      POSTGRES_PASSWORD: monitor
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
 
   redis:
     image: redis:7-alpine
+
+volumes:
+  postgres_data:
