@@ -6,7 +6,7 @@ from decimal import Decimal, InvalidOperation
 import os
 import uuid
 
-from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
+from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, session, url_for
 from flask_login import login_required
 from rq import Retry
 from sqlalchemy import or_
@@ -84,6 +84,14 @@ def split_numero_comp(value: str | None) -> tuple[str, str]:
         return trimmed if trimmed else "0"
 
     return normalize(punto_venta), normalize(nro)
+
+
+def normalize_cuit(value: str | None) -> str:
+    return (value or "").strip()
+
+
+def is_valid_cuit(cuit: str) -> bool:
+    return cuit.isdigit() and len(cuit) == 11
 
 
 def format_date(value: date | None) -> str:
@@ -404,6 +412,14 @@ def dashboard():
     detalle = build_calculo(seleccionado, anchor_date, topes_anchor) if seleccionado else None
 
     fecha_corte_label = anchor_actual.strftime("%d/%m/%y")
+    mono_form = session.pop("mono_form", None)
+    open_modal = session.pop("open_modal", None)
+    factura_import_logs = []
+    if active_tab == "facturas":
+        factura_import_logs = (
+            FacturaImport.query.order_by(FacturaImport.created_at.desc())
+            .all()
+        )
 
     return render_template(
         "dashboard.html",
@@ -427,6 +443,9 @@ def dashboard():
         count_sube=count_sube,
         count_baja=count_baja,
         fecha_corte_label=fecha_corte_label,
+        mono_form=mono_form,
+        open_modal=open_modal,
+        factura_import_logs=factura_import_logs,
     )
 
 
@@ -434,12 +453,50 @@ def dashboard():
 @login_required
 def create_monotributista():
     razon_social = request.form.get("razon_social", "").strip()
-    cuit = request.form.get("cuit", "").strip()
+    cuit = normalize_cuit(request.form.get("cuit"))
     clave_fiscal = request.form.get("clave_fiscal", "").strip()
     categoria_actual_id = request.form.get("categoria_actual_id")
 
-    if not razon_social or not cuit or not clave_fiscal or not categoria_actual_id:
-        flash("Completa los campos requeridos para crear el monotributista.", "error")
+    missing = []
+    if not razon_social:
+        missing.append("Razon social")
+    if not cuit:
+        missing.append("CUIT")
+    if not clave_fiscal:
+        missing.append("Clave fiscal")
+    if not categoria_actual_id:
+        missing.append("Categoria actual")
+    if missing:
+        missing_label = ", ".join(missing)
+        flash(f"Faltan campos requeridos: {missing_label}.", "error")
+        session["mono_form"] = {
+            "razon_social": razon_social,
+            "cuit": cuit,
+            "clave_fiscal": clave_fiscal,
+            "categoria_actual_id": categoria_actual_id or "",
+        }
+        session["open_modal"] = "monotributista"
+        return redirect(url_for("main.dashboard", tab="monotributistas"))
+    if not is_valid_cuit(cuit):
+        flash("El CUIT debe tener 11 digitos y solo numeros.", "error")
+        session["mono_form"] = {
+            "razon_social": razon_social,
+            "cuit": cuit,
+            "clave_fiscal": clave_fiscal,
+            "categoria_actual_id": categoria_actual_id or "",
+        }
+        session["open_modal"] = "monotributista"
+        return redirect(url_for("main.dashboard", tab="monotributistas"))
+    existing = Monotributista.query.filter_by(cuit=cuit).first()
+    if existing:
+        flash("El CUIT ingresado ya existe.", "error")
+        session["mono_form"] = {
+            "razon_social": razon_social,
+            "cuit": cuit,
+            "clave_fiscal": clave_fiscal,
+            "categoria_actual_id": categoria_actual_id or "",
+        }
+        session["open_modal"] = "monotributista"
         return redirect(url_for("main.dashboard", tab="monotributistas"))
 
     monotributista = Monotributista(
@@ -460,28 +517,70 @@ def create_monotributista():
 def edit_monotributista(monotributista_id):
     monotributista = Monotributista.query.get_or_404(monotributista_id)
     categorias = Categoria.query.order_by(Categoria.orden).all()
+    form_values = None
 
     if request.method == "POST":
         razon_social = request.form.get("razon_social", "").strip()
-        cuit = request.form.get("cuit", "").strip()
+        cuit = normalize_cuit(request.form.get("cuit"))
         clave_fiscal = request.form.get("clave_fiscal", "").strip()
         categoria_actual_id = request.form.get("categoria_actual_id")
 
-        if not razon_social or not cuit or not clave_fiscal or not categoria_actual_id:
-            flash("Completa los campos requeridos para editar.", "error")
+        missing = []
+        if not razon_social:
+            missing.append("Razon social")
+        if not cuit:
+            missing.append("CUIT")
+        if not clave_fiscal:
+            missing.append("Clave fiscal")
+        if not categoria_actual_id:
+            missing.append("Categoria actual")
+        if missing:
+            missing_label = ", ".join(missing)
+            flash(f"Faltan campos requeridos: {missing_label}.", "error")
+            form_values = {
+                "razon_social": razon_social,
+                "cuit": cuit,
+                "clave_fiscal": clave_fiscal,
+                "categoria_actual_id": categoria_actual_id or "",
+            }
+        elif not is_valid_cuit(cuit):
+            flash("El CUIT debe tener 11 digitos y solo numeros.", "error")
+            form_values = {
+                "razon_social": razon_social,
+                "cuit": cuit,
+                "clave_fiscal": clave_fiscal,
+                "categoria_actual_id": categoria_actual_id or "",
+            }
         else:
-            monotributista.razon_social = razon_social
-            monotributista.cuit = cuit
-            monotributista.clave_fiscal = clave_fiscal
-            monotributista.categoria_actual_id = int(categoria_actual_id)
-            db.session.commit()
-            flash("Monotributista actualizado.", "success")
-            return redirect(url_for("main.dashboard", tab="monotributistas"))
+            existing = (
+                Monotributista.query.filter(
+                    Monotributista.cuit == cuit,
+                    Monotributista.id != monotributista.id,
+                ).first()
+            )
+            if existing:
+                flash("El CUIT ingresado ya existe.", "error")
+                form_values = {
+                    "razon_social": razon_social,
+                    "cuit": cuit,
+                    "clave_fiscal": clave_fiscal,
+                    "categoria_actual_id": categoria_actual_id or "",
+                }
+            else:
+                monotributista.razon_social = razon_social
+                monotributista.cuit = cuit
+                monotributista.clave_fiscal = clave_fiscal
+                monotributista.categoria_actual_id = int(categoria_actual_id)
+                db.session.commit()
+                flash("Monotributista actualizado.", "success")
+                return redirect(url_for("main.dashboard", tab="monotributistas"))
 
     return render_template(
         "edit_monotributista.html",
         monotributista=monotributista,
         categorias=categorias,
+        form_values=form_values,
+        form_flash=True,
     )
 
 
@@ -507,6 +606,17 @@ def create_factura():
 
         invalid = [item.filename for item in pdf_files if not item.filename.lower().endswith(".pdf")]
         if invalid:
+            db.session.add(
+                FacturaImport(
+                    monotributista_id=monotributista_id,
+                    status="failed",
+                    pdf_path="",
+                    source="upload",
+                    result_message="Todos los archivos deben ser PDFs.",
+                    processed_at=datetime.utcnow(),
+                )
+            )
+            db.session.commit()
             flash("Todos los archivos deben ser PDFs.", "error")
             return redirect(url_for("main.dashboard", tab="facturas"))
 
@@ -525,6 +635,8 @@ def create_factura():
                 monotributista_id=monotributista_id,
                 status="pending",
                 pdf_path=pdf_path,
+                filename=filename,
+                source="upload",
             )
             db.session.add(factura_import)
             db.session.flush()
@@ -537,14 +649,17 @@ def create_factura():
                     retry=Retry(max=3, interval=[10, 30, 60]),
                 )
                 enqueued += 1
+                factura_import.result_message = "En cola para procesamiento."
             except Exception as exc:
                 factura_import.status = "failed"
                 factura_import.error = f"No se pudo encolar: {exc}"
+                factura_import.result_message = factura_import.error
+                factura_import.processed_at = datetime.utcnow()
         db.session.commit()
 
         if enqueued:
             flash(
-                f"Facturas en cola para procesamiento: {enqueued}.",
+                f"PDFs en cola para procesamiento: {enqueued}.",
                 "success",
             )
         else:
@@ -554,6 +669,7 @@ def create_factura():
     monotributista_id = request.form.get("monotributista_id")
     fecha = parse_date(request.form.get("fecha"))
     tipo_comp = request.form.get("tipo_comp", "").strip()
+    tipo_comp = tipo_comp.upper()
     punto_venta = request.form.get("punto_venta", "").strip()
     nro_comp = request.form.get("nro_comp", "").strip()
     cuit_receptor = request.form.get("cuit_receptor", "").strip()
@@ -563,25 +679,72 @@ def create_factura():
     fecha_hasta = parse_date(request.form.get("fecha_hasta"))
     concepto = request.form.get("concepto", "").strip()
 
+    is_export = tipo_comp == "E"
     if (
         not monotributista_id
         or not fecha
         or not tipo_comp
-        or not punto_venta
+        or (not punto_venta and not is_export)
         or not nro_comp
         or importe_total is None
     ):
-        flash("Completa los campos requeridos para crear la factura.", "error")
+        db.session.add(
+            FacturaImport(
+                monotributista_id=int(monotributista_id) if monotributista_id else None,
+                status="failed",
+                pdf_path="",
+                source="manual",
+                result_message="Completa los campos requeridos para crear la factura.",
+                processed_at=datetime.utcnow(),
+            )
+        )
+        db.session.commit()
+        session["open_modal"] = "factura-imports"
         return redirect(url_for("main.dashboard", tab="facturas"))
 
     if tipo_comp.upper().startswith("NC") and importe_total > 0:
         importe_total = -importe_total
 
-    if not punto_venta.isdigit() or not nro_comp.isdigit():
-        flash("El punto de venta y el numero de comprobante deben ser numericos.", "error")
+    if (punto_venta and not punto_venta.isdigit()) or not nro_comp.isdigit():
+        db.session.add(
+            FacturaImport(
+                monotributista_id=int(monotributista_id) if monotributista_id else None,
+                status="failed",
+                pdf_path="",
+                source="manual",
+                result_message="El punto de venta y el numero de comprobante deben ser numericos.",
+                processed_at=datetime.utcnow(),
+            )
+        )
+        db.session.commit()
+        session["open_modal"] = "factura-imports"
         return redirect(url_for("main.dashboard", tab="facturas"))
 
+    if is_export:
+        punto_venta = punto_venta or "0"
+
     numero_comp = f"{punto_venta.zfill(4)}-{nro_comp.zfill(8)}"
+    existing = Factura.query.filter_by(
+        monotributista_id=int(monotributista_id),
+        tipo_comp=tipo_comp,
+        numero_comp=numero_comp,
+    ).first()
+    if existing:
+        db.session.add(
+            FacturaImport(
+                monotributista_id=int(monotributista_id),
+                status="failed",
+                pdf_path="",
+                source="manual",
+                result_message=(
+                    "Ya existe una factura con ese numero y punto de venta para este monotributista."
+                ),
+                processed_at=datetime.utcnow(),
+            )
+        )
+        db.session.commit()
+        session["open_modal"] = "factura-imports"
+        return redirect(url_for("main.dashboard", tab="facturas"))
 
     factura = Factura(
         monotributista_id=int(monotributista_id),
@@ -596,8 +759,20 @@ def create_factura():
         concepto=concepto,
     )
     db.session.add(factura)
+    db.session.flush()
+    db.session.add(
+        FacturaImport(
+            monotributista_id=int(monotributista_id),
+            status="done",
+            pdf_path="",
+            source="manual",
+            factura_id=factura.id,
+            result_message=f"Factura creada: {numero_comp}",
+            processed_at=datetime.utcnow(),
+        )
+    )
     db.session.commit()
-    flash("Factura creada.", "success")
+    session["open_modal"] = "factura-imports"
     return redirect(url_for("main.dashboard", tab="facturas"))
 
 
@@ -607,11 +782,14 @@ def edit_factura(factura_id):
     factura = Factura.query.get_or_404(factura_id)
     monotributistas = Monotributista.query.order_by(Monotributista.razon_social).all()
     punto_venta_value, nro_comp_value = split_numero_comp(factura.numero_comp)
+    if factura.tipo_comp and factura.tipo_comp.upper() == "E" and punto_venta_value == "0":
+        punto_venta_value = ""
 
     if request.method == "POST":
         monotributista_id = request.form.get("monotributista_id")
         fecha = parse_date(request.form.get("fecha"))
         tipo_comp = request.form.get("tipo_comp", "").strip()
+        tipo_comp = tipo_comp.upper()
         punto_venta = request.form.get("punto_venta", "").strip()
         nro_comp = request.form.get("nro_comp", "").strip()
         cuit_receptor = request.form.get("cuit_receptor", "").strip()
@@ -621,11 +799,12 @@ def edit_factura(factura_id):
         fecha_hasta = parse_date(request.form.get("fecha_hasta"))
         concepto = request.form.get("concepto", "").strip()
 
+        is_export = tipo_comp == "E"
         if (
             not monotributista_id
             or not fecha
             or not tipo_comp
-            or not punto_venta
+            or (not punto_venta and not is_export)
             or not nro_comp
             or importe_total is None
         ):
@@ -633,7 +812,7 @@ def edit_factura(factura_id):
         else:
             if tipo_comp.upper().startswith("NC") and importe_total > 0:
                 importe_total = -importe_total
-            if not punto_venta.isdigit() or not nro_comp.isdigit():
+            if (punto_venta and not punto_venta.isdigit()) or not nro_comp.isdigit():
                 flash(
                     "El punto de venta y el numero de comprobante deben ser numericos.",
                     "error",
@@ -647,7 +826,28 @@ def edit_factura(factura_id):
                     nro_comp_value=nro_comp_value,
                 )
 
+            if is_export:
+                punto_venta = punto_venta or "0"
             numero_comp = f"{punto_venta.zfill(4)}-{nro_comp.zfill(8)}"
+            existing = Factura.query.filter(
+                Factura.monotributista_id == int(monotributista_id),
+                Factura.tipo_comp == tipo_comp,
+                Factura.numero_comp == numero_comp,
+                Factura.id != factura.id,
+            ).first()
+            if existing:
+                flash(
+                    "Ya existe una factura con ese numero y punto de venta para este monotributista.",
+                    "error",
+                )
+                return render_template(
+                    "edit_factura.html",
+                    factura=factura,
+                    monotributistas=monotributistas,
+                    importe_value=f"{factura.importe_total:.2f}",
+                    punto_venta_value=punto_venta_value,
+                    nro_comp_value=nro_comp_value,
+                )
             factura.monotributista_id = int(monotributista_id)
             factura.fecha = fecha
             factura.tipo_comp = tipo_comp
@@ -676,10 +876,35 @@ def edit_factura(factura_id):
 @login_required
 def delete_factura(factura_id):
     factura = Factura.query.get_or_404(factura_id)
+    FacturaImport.query.filter_by(factura_id=factura.id).update(
+        {"factura_id": None}
+    )
     db.session.delete(factura)
     db.session.commit()
     flash("Factura eliminada.", "success")
     return redirect(url_for("main.dashboard", tab="facturas"))
+
+
+@main_bp.get("/facturas/imports")
+@login_required
+def factura_imports():
+    logs = (
+        FacturaImport.query.order_by(FacturaImport.created_at.desc())
+        .limit(200)
+        .all()
+    )
+    payload = []
+    for item in logs:
+        payload.append(
+            {
+                "created_at": item.created_at.isoformat() if item.created_at else "",
+                "monotributista": item.monotributista.razon_social if item.monotributista else "-",
+                "source": item.source or "-",
+                "status": item.status or "-",
+                "result": item.result_message or item.error or "-",
+            }
+        )
+    return jsonify(payload)
 
 
 @main_bp.post("/vigencias/create")

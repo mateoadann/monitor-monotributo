@@ -31,16 +31,17 @@
     {% block header_content %}{% endblock %}
   </header>
 
+  {% set flash_messages = get_flashed_messages(with_categories=true) %}
   <main class="content">
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        <div class="flash-stack">
-          {% for category, message in messages %}
+    {% if flash_messages and not form_flash %}
+      <div class="flash-stack">
+        {% for category, message in flash_messages %}
+          {% if not (open_modal == "monotributista" and category == "error") %}
             <div class="flash flash--{{ category }}">{{ message }}</div>
-          {% endfor %}
-        </div>
-      {% endif %}
-    {% endwith %}
+          {% endif %}
+        {% endfor %}
+      </div>
+    {% endif %}
     {% block content %}{% endblock %}
   </main>
   <div class="modal modal--confirm" id="confirmModal" aria-hidden="true">
@@ -125,6 +126,15 @@
         message.remove();
       }, 2600);
     });
+    const modalErrors = document.querySelectorAll(".flash--modal");
+    modalErrors.forEach((message) => {
+      setTimeout(() => {
+        message.classList.add("is-hidden");
+      }, 4000);
+      setTimeout(() => {
+        message.remove();
+      }, 4600);
+    });
 
     (() => {
       if (!window.AirDatepicker) {
@@ -180,11 +190,17 @@
         return `${year}-${month}-${day}`;
       };
 
-      document.querySelectorAll("input[type='date']").forEach((input) => {
+      const pickerRegistry = [];
+      document
+        .querySelectorAll("#configuracion input[type='date'], input[type='date'][data-air-picker='true']")
+        .forEach((input) => {
         if (input.dataset.airDatepicker === "true") {
           return;
         }
         input.dataset.airDatepicker = "true";
+        input.setAttribute("autocomplete", "off");
+        input.setAttribute("inputmode", "none");
+        input.readOnly = true;
         const selectedDate = parseDateValue(input.value);
         const picker = new AirDatepicker(input, {
           autoClose: true,
@@ -201,15 +217,36 @@
           },
         });
         const showPicker = () => picker.show();
+        input.addEventListener("pointerdown", (event) => {
+          event.preventDefault();
+          showPicker();
+        });
         input.addEventListener("focus", showPicker);
-        input.addEventListener("click", showPicker);
+        input.addEventListener("click", (event) => {
+          event.preventDefault();
+          showPicker();
+        });
         input.addEventListener("keydown", (event) => {
           if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
             showPicker();
           }
         });
+        pickerRegistry.push({ input, picker });
       });
+      if (pickerRegistry.length) {
+        const handleOutsideClick = (event) => {
+          if (event.target.closest(".air-datepicker")) {
+            return;
+          }
+          if (event.target.closest("input[type='date'][data-air-datepicker='true']")) {
+            return;
+          }
+          pickerRegistry.forEach(({ picker }) => picker.hide());
+        };
+        document.addEventListener("mousedown", handleOutsideClick);
+        document.addEventListener("touchstart", handleOutsideClick);
+      }
     })();
   </script>
 </body>

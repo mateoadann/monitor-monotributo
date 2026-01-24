@@ -517,6 +517,53 @@ body {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.table__row--imports {
+  grid-template-columns: 1.2fr 1.4fr 0.7fr 0.8fr 2fr;
+}
+
+#configuracion input[type="date"][data-air-datepicker="true"],
+input[type="date"][data-air-picker="true"] {
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+#configuracion input[type="date"][data-air-datepicker="true"]::-webkit-calendar-picker-indicator,
+input[type="date"][data-air-picker="true"]::-webkit-calendar-picker-indicator {
+  opacity: 0;
+  display: none;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: lowercase;
+}
+
+.status--done {
+  background: #dff5e5;
+  color: #276749;
+}
+
+.status--failed {
+  background: #ffe5e5;
+  color: #9b2c2c;
+}
+
+.status--processing {
+  background: #e6f7f9;
+  color: var(--blue);
+}
+
+.status--pending {
+  background: #fff5d6;
+  color: #7a5b00;
+}
+
 .table__row--topes {
   grid-template-columns: 0.6fr 1.4fr;
   align-items: center;
@@ -976,6 +1023,10 @@ body {
   animation: rise 0.4s ease-out;
   max-height: calc(100vh - 80px);
   overflow: auto;
+}
+
+.modal--wide .modal__content {
+  width: min(980px, 100%);
 }
 
 .modal__header {

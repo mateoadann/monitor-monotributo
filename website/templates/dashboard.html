@@ -152,6 +152,7 @@
     </div>
     <div class="panel__actions">
       <button class="primary" type="button" data-open="factura">Cargar factura</button>
+      <button class="ghost-button" type="button" data-open="factura-imports">Ver importaciones</button>
     </div>
     <div class="table table--dense">
       <div class="table__row table__head table__row--facturas">
@@ -515,26 +516,33 @@
       <h3>Nuevo monotributista</h3>
       <button class="modal__close" type="button" data-close>&times;</button>
     </div>
+    {% if open_modal == "monotributista" and flash_messages %}
+      {% for category, message in flash_messages %}
+        {% if category == "error" %}
+          <div class="flash flash--error flash--modal">{{ message }}</div>
+        {% endif %}
+      {% endfor %}
+    {% endif %}
     <form class="panel__form" method="post" action="{{ url_for('main.create_monotributista') }}" data-confirm="Confirmar creacion del monotributista?">
       <div class="form-grid form-grid--stack">
         <label class="field">
           Razon Social
-          <input type="text" name="razon_social" required>
+          <input type="text" name="razon_social" value="{{ mono_form.get('razon_social', '') if mono_form else '' }}" required>
         </label>
         <label class="field">
           CUIT
-          <input type="text" name="cuit" required>
+          <input type="text" name="cuit" value="{{ mono_form.get('cuit', '') if mono_form else '' }}" required>
         </label>
         <label class="field">
           Clave Fiscal
-          <input type="text" name="clave_fiscal" required>
+          <input type="text" name="clave_fiscal" value="{{ mono_form.get('clave_fiscal', '') if mono_form else '' }}" required>
         </label>
         <label class="field">
           Categoria Actual
           <select name="categoria_actual_id" required>
             <option value="">Seleccionar</option>
             {% for categoria in categorias %}
-              <option value="{{ categoria.id }}">{{ categoria.nombre }}</option>
+              <option value="{{ categoria.id }}" {% if mono_form and mono_form.get('categoria_actual_id') == (categoria.id|string) %}selected{% endif %}>{{ categoria.nombre }}</option>
             {% endfor %}
           </select>
         </label>
@@ -625,6 +633,71 @@
       </div>
       <button class="primary" type="submit">Crear factura</button>
     </form>
+  </div>
+</div>
+
+<div class="modal modal--wide" data-modal="factura-imports">
+  <div class="modal__content">
+    <div class="modal__header">
+      <h3>Importaciones de facturas</h3>
+      <button class="modal__close" type="button" data-close>&times;</button>
+    </div>
+    <div class="table">
+      <div class="table__row table__row--imports table__head">
+        <span>Fecha</span>
+        <span>Monotributista</span>
+        <span>Origen</span>
+        <span>Estado</span>
+        <span>Resultado</span>
+      </div>
+      <div data-imports-body>
+        {% if factura_import_logs %}
+          {% for item in factura_import_logs %}
+          {% set status_value = item.status or "-" %}
+          {% set source_value = item.source or "-" %}
+          {% set status_class = "pending" %}
+          {% if status_value == "done" %}
+            {% set status_class = "done" %}
+          {% elif status_value == "processing" %}
+            {% set status_class = "processing" %}
+          {% elif status_value == "failed" %}
+            {% set status_class = "failed" %}
+          {% endif %}
+          {% set status_label = "pendiente" %}
+          {% if status_value == "done" %}
+            {% set status_label = "finalizada" %}
+          {% elif status_value == "processing" %}
+            {% set status_label = "procesando" %}
+          {% elif status_value == "failed" %}
+            {% set status_label = "fallida" %}
+          {% endif %}
+          {% set source_label = "PDF" %}
+          {% if source_value == "manual" %}
+            {% set source_label = "Manual" %}
+          {% elif source_value == "rpa" %}
+            {% set source_label = "RPA" %}
+          {% elif source_value == "-" %}
+            {% set source_label = "-" %}
+          {% endif %}
+          <div class="table__row table__row--imports">
+            <span>{{ item.created_at.strftime("%d/%m/%Y %H:%M") if item.created_at else "-" }}</span>
+            <span>{{ item.monotributista.razon_social if item.monotributista else "-" }}</span>
+            <span>{{ source_label }}</span>
+            <span class="status-pill status--{{ status_class }}">{{ status_label }}</span>
+            <span>{{ item.result_message or item.error or "-" }}</span>
+          </div>
+          {% endfor %}
+        {% else %}
+          <div class="table__row table__row--imports">
+            <span>Sin importaciones registradas.</span>
+            <span></span>
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+        {% endif %}
+      </div>
+    </div>
   </div>
 </div>
 
@@ -1077,6 +1150,7 @@
     if (modal) {
       modal.classList.add("is-open");
       updateBodyScroll();
+      modal.dispatchEvent(new CustomEvent("modal:open"));
     }
   };
 
@@ -1128,6 +1202,7 @@
       resetFacturaModal();
     }
     updateBodyScroll();
+    modal.dispatchEvent(new CustomEvent("modal:close"));
   };
 
   openButtons.forEach((button) => {
@@ -1171,5 +1246,121 @@
       closeModal(openModalEl);
     }
   });
+
+  const autoOpenModal = "{{ open_modal or '' }}";
+  if (autoOpenModal) {
+    openModal(autoOpenModal);
+  }
+
+  const importsModal = document.querySelector("[data-modal='factura-imports']");
+  const importsBody = document.querySelector("[data-imports-body]");
+  let importsTimer = null;
+
+  const formatImportDate = (value) => {
+    if (!value) {
+      return "-";
+    }
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return "-";
+    }
+    const pad = (part) => String(part).padStart(2, "0");
+    const day = pad(date.getDate());
+    const month = pad(date.getMonth() + 1);
+    const year = date.getFullYear();
+    const hours = pad(date.getHours());
+    const minutes = pad(date.getMinutes());
+    return `${day}/${month}/${year} ${hours}:${minutes}`;
+  };
+
+  const renderImportRows = (items) => {
+    if (!importsBody) {
+      return;
+    }
+    if (!items.length) {
+      importsBody.innerHTML = `
+        <div class="table__row table__row--imports">
+          <span>Sin importaciones registradas.</span>
+          <span></span>
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+      `;
+      return;
+    }
+    importsBody.innerHTML = items
+      .map((item) => {
+        const status = item.status === "failed_viewed" ? "failed" : item.status;
+        const statusClass = status === "done"
+          ? "done"
+          : status === "processing"
+            ? "processing"
+            : status === "failed"
+              ? "failed"
+              : "pending";
+        const statusLabel = status === "done"
+          ? "finalizada"
+          : status === "processing"
+            ? "procesando"
+            : status === "failed"
+              ? "fallida"
+              : "pendiente";
+        const sourceLabel = item.source === "manual"
+          ? "Manual"
+          : item.source === "rpa"
+            ? "RPA"
+            : item.source
+              ? "PDF"
+              : "-";
+        return `
+          <div class="table__row table__row--imports">
+            <span>${formatImportDate(item.created_at)}</span>
+            <span>${item.monotributista || "-"}</span>
+            <span>${sourceLabel}</span>
+            <span class="status-pill status--${statusClass}">${statusLabel}</span>
+            <span>${item.result || "-"}</span>
+          </div>
+        `;
+      })
+      .join("");
+  };
+
+  const fetchImports = async () => {
+    try {
+      const response = await fetch("{{ url_for('main.factura_imports') }}", {
+        headers: { "X-Requested-With": "XMLHttpRequest" },
+      });
+      if (!response.ok) {
+        return;
+      }
+      const data = await response.json();
+      if (Array.isArray(data)) {
+        renderImportRows(data);
+      }
+    } catch (error) {
+      // Ignore polling errors.
+    }
+  };
+
+  const startImportsPolling = () => {
+    if (importsTimer) {
+      return;
+    }
+    fetchImports();
+    importsTimer = window.setInterval(fetchImports, 4000);
+  };
+
+  const stopImportsPolling = () => {
+    if (importsTimer) {
+      window.clearInterval(importsTimer);
+      importsTimer = null;
+    }
+  };
+
+  if (importsModal) {
+    importsModal.addEventListener("modal:open", startImportsPolling);
+    importsModal.addEventListener("modal:close", stopImportsPolling);
+  }
 </script>
 {% endblock %}

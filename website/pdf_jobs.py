@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from decimal import Decimal
 
 from website import create_app
@@ -45,6 +46,7 @@ def process_factura_import(import_id: int) -> None:
             return
         factura_import.status = "processing"
         factura_import.error = None
+        factura_import.result_message = None
         db.session.commit()
 
         try:
@@ -53,10 +55,12 @@ def process_factura_import(import_id: int) -> None:
                 data, ensure_ascii=True, default=str
             )
 
-            numero_comp = build_numero_comp(
-                data.get("punto_venta"), data.get("numero_comp")
-            )
             tipo_comp = data.get("tipo_comp")
+            punto_venta = data.get("punto_venta")
+            numero_raw = data.get("numero_comp")
+            if tipo_comp == "E" and not punto_venta and numero_raw:
+                punto_venta = "0"
+            numero_comp = build_numero_comp(punto_venta, numero_raw)
             importe_total = data.get("importe_total")
             cuit_receptor = data.get("cuit_receptor")
             fecha_emision = data.get("fecha_emision")
@@ -102,6 +106,18 @@ def process_factura_import(import_id: int) -> None:
             monotributista_id = factura_import.monotributista_id or match_monotributista(
                 data.get("cuit_emisor"), data.get("facturador")
             )
+            if monotributista_id:
+                factura_import.monotributista_id = monotributista_id
+            if monotributista_id:
+                existing = Factura.query.filter_by(
+                    monotributista_id=monotributista_id,
+                    tipo_comp=tipo_comp,
+                    numero_comp=numero_comp,
+                ).first()
+                if existing:
+                    raise ValueError(
+                        "Ya existe una factura con ese numero y punto de venta para este monotributista."
+                    )
 
             factura = Factura(
                 monotributista_id=monotributista_id,
@@ -120,9 +136,13 @@ def process_factura_import(import_id: int) -> None:
 
             factura_import.factura_id = factura.id
             factura_import.status = "done"
+            factura_import.processed_at = datetime.utcnow()
+            factura_import.result_message = f"Factura creada: {numero_comp}"
             db.session.commit()
         except Exception as exc:
             factura_import.status = "failed"
             factura_import.error = str(exc)
+            factura_import.result_message = str(exc)
+            factura_import.processed_at = datetime.utcnow()
             db.session.commit()
             raise

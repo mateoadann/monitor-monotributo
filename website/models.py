@@ -56,7 +56,7 @@ class CategoriaTope(db.Model):
 class Monotributista(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     razon_social = db.Column(db.String(160), nullable=False)
-    cuit = db.Column(db.String(20), nullable=False)
+    cuit = db.Column(db.String(20), nullable=False, unique=True)
     clave_fiscal = db.Column(db.String(120), nullable=False)
     categoria_actual_id = db.Column(db.Integer, db.ForeignKey("categoria.id"))
     categoria_corresponde_id = db.Column(db.Integer, db.ForeignKey("categoria.id"))
@@ -91,9 +91,13 @@ class Factura(db.Model):
 class FacturaImport(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    processed_at = db.Column(db.DateTime)
     status = db.Column(db.String(20), nullable=False, default="pending")
     error = db.Column(db.Text)
+    result_message = db.Column(db.Text)
     pdf_path = db.Column(db.String(255), nullable=False)
+    filename = db.Column(db.String(255))
+    source = db.Column(db.String(30), nullable=False, default="upload")
     extracted_data = db.Column(db.Text)
     monotributista_id = db.Column(db.Integer, db.ForeignKey("monotributista.id"))
     factura_id = db.Column(db.Integer, db.ForeignKey("factura.id"))

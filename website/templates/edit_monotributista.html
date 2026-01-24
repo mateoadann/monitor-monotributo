@@ -3,25 +3,31 @@
 <section class="form-page">
   <div class="form-card">
     <h1>Editar monotributista</h1>
+    {% if flash_messages %}
+      {% for category, message in flash_messages %}
+        <div class="flash flash--{{ category }} flash--modal">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
     <form method="post" class="panel__form" data-confirm="Confirmar guardado del monotributista?">
       <div class="form-grid">
         <label class="field">
           Razon Social
-          <input type="text" name="razon_social" value="{{ monotributista.razon_social }}" required>
+          <input type="text" name="razon_social" value="{{ form_values.get('razon_social', monotributista.razon_social) if form_values else monotributista.razon_social }}" required>
         </label>
         <label class="field">
           CUIT
-          <input type="text" name="cuit" value="{{ monotributista.cuit }}" required>
+          <input type="text" name="cuit" value="{{ form_values.get('cuit', monotributista.cuit) if form_values else monotributista.cuit }}" required>
         </label>
         <label class="field">
           Clave Fiscal
-          <input type="text" name="clave_fiscal" value="{{ monotributista.clave_fiscal }}" required>
+          <input type="text" name="clave_fiscal" value="{{ form_values.get('clave_fiscal', monotributista.clave_fiscal) if form_values else monotributista.clave_fiscal }}" required>
         </label>
         <label class="field">
           Categoria Actual
           <select name="categoria_actual_id" required>
             {% for categoria in categorias %}
-              <option value="{{ categoria.id }}" {% if monotributista.categoria_actual_id == categoria.id %}selected{% endif %}>{{ categoria.nombre }}</option>
+              {% set selected_id = form_values.get('categoria_actual_id') if form_values else monotributista.categoria_actual_id|string %}
+              <option value="{{ categoria.id }}" {% if selected_id == (categoria.id|string) %}selected{% endif %}>{{ categoria.nombre }}</option>
             {% endfor %}
           </select>
         </label>
