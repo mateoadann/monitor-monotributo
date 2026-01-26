@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from flask_login import UserMixin
 from flask_sqlalchemy import SQLAlchemy
@@ -90,7 +90,9 @@ class Factura(db.Model):
 
 class FacturaImport(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    created_at = db.Column(
+        db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
     processed_at = db.Column(db.DateTime)
     status = db.Column(db.String(20), nullable=False, default="pending")
     error = db.Column(db.Text)

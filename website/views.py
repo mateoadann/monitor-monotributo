@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 import os
 import uuid
@@ -468,7 +468,7 @@ def create_monotributista():
         missing.append("Categoria actual")
     if missing:
         missing_label = ", ".join(missing)
-        flash(f"Faltan campos requeridos: {missing_label}.", "error")
+        flash(f"Completa los campos requeridos: {missing_label}.", "error")
         session["mono_form"] = {
             "razon_social": razon_social,
             "cuit": cuit,
@@ -613,7 +613,7 @@ def create_factura():
                     pdf_path="",
                     source="upload",
                     result_message="Todos los archivos deben ser PDFs.",
-                    processed_at=datetime.utcnow(),
+                    processed_at=datetime.now(timezone.utc),
                 )
             )
             db.session.commit()
@@ -654,7 +654,7 @@ def create_factura():
                 factura_import.status = "failed"
                 factura_import.error = f"No se pudo encolar: {exc}"
                 factura_import.result_message = factura_import.error
-                factura_import.processed_at = datetime.utcnow()
+                factura_import.processed_at = datetime.now(timezone.utc)
         db.session.commit()
 
         if enqueued:
@@ -695,7 +695,7 @@ def create_factura():
                 pdf_path="",
                 source="manual",
                 result_message="Completa los campos requeridos para crear la factura.",
-                processed_at=datetime.utcnow(),
+                processed_at=datetime.now(timezone.utc),
             )
         )
         db.session.commit()
@@ -713,7 +713,7 @@ def create_factura():
                 pdf_path="",
                 source="manual",
                 result_message="El punto de venta y el numero de comprobante deben ser numericos.",
-                processed_at=datetime.utcnow(),
+                processed_at=datetime.now(timezone.utc),
             )
         )
         db.session.commit()
@@ -739,7 +739,7 @@ def create_factura():
                 result_message=(
                     "Ya existe una factura con ese numero y punto de venta para este monotributista."
                 ),
-                processed_at=datetime.utcnow(),
+                processed_at=datetime.now(timezone.utc),
             )
         )
         db.session.commit()
@@ -768,11 +768,12 @@ def create_factura():
             source="manual",
             factura_id=factura.id,
             result_message=f"Factura creada: {numero_comp}",
-            processed_at=datetime.utcnow(),
+            processed_at=datetime.now(timezone.utc),
         )
     )
     db.session.commit()
     session["open_modal"] = "factura-imports"
+    flash("Factura creada.", "success")
     return redirect(url_for("main.dashboard", tab="facturas"))
 
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from website import create_app
@@ -136,13 +136,13 @@ def process_factura_import(import_id: int) -> None:
 
             factura_import.factura_id = factura.id
             factura_import.status = "done"
-            factura_import.processed_at = datetime.utcnow()
+            factura_import.processed_at = datetime.now(timezone.utc)
             factura_import.result_message = f"Factura creada: {numero_comp}"
             db.session.commit()
         except Exception as exc:
             factura_import.status = "failed"
             factura_import.error = str(exc)
             factura_import.result_message = str(exc)
-            factura_import.processed_at = datetime.utcnow()
+            factura_import.processed_at = datetime.now(timezone.utc)
             db.session.commit()
             raise
