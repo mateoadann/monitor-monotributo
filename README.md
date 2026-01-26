@@ -29,6 +29,9 @@ Luego abrir:
 http://localhost:5001
 ```
 
+## Variables de entorno
+Opcionalmente podés crear un `.env` basado en `.env.example` para configurar base de datos, Redis, uploads y secret.
+
 ## Usuario demo
 - Usuario: admin
 - Contrasena: admin
@@ -42,6 +45,7 @@ pytest
 ```
 
 ## Notas
+- Los tests requieren PostgreSQL disponible. Configurar `DATABASE_URL_TEST` (o `DATABASE_URL`) antes de correrlos.
 - PostgreSQL corre dentro de Docker Compose y usa un volumen persistente (`postgres_data`).
 - El procesamiento de PDFs se ejecuta en background con Redis + RQ (incluido en Docker Compose).
 - Las notas de credito se cargan con importes negativos.
