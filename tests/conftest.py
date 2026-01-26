@@ -15,9 +15,13 @@ from website.models import create_admin_if_missing, db
 
 @pytest.fixture()
 def app(tmp_path, monkeypatch):
-    db_path = tmp_path / "test.db"
     uploads_path = tmp_path / "uploads"
-    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path}")
+    db_url = os.environ.get("DATABASE_URL_TEST") or os.environ.get("DATABASE_URL")
+    if not db_url:
+        raise RuntimeError("DATABASE_URL_TEST or DATABASE_URL must be set for tests.")
+    if not db_url.startswith("postgresql"):
+        raise RuntimeError("Tests require a PostgreSQL DATABASE_URL.")
+    monkeypatch.setenv("DATABASE_URL", db_url)
     monkeypatch.setenv("UPLOAD_FOLDER", str(uploads_path))
 
     app = create_app(init_db=False)
