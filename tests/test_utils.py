@@ -17,4 +17,4 @@ def test_format_currency_formats_with_thousands_and_sign():
 
 def test_split_numero_comp_normalizes_parts():
     assert split_numero_comp("0002-00000147") == ("2", "147")
-    assert split_numero_comp("001200000003") == ("12", "3")
+    assert split_numero_comp("0001200000003") == ("12", "3")

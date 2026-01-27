@@ -95,4 +95,4 @@ def test_create_factura_nc_guarda_importe_negativo(client, app):
         facturas = Factura.query.all()
         assert len(facturas) == 1
         assert str(facturas[0].importe_total) == "-1000.00"
-        assert facturas[0].numero_comp == "0002-00000147"
+        assert facturas[0].numero_comp == "00002-00000147"
