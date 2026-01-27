@@ -16,10 +16,7 @@ def build_numero_comp(punto_venta: str | None, numero: str | None) -> str | None
     numero = numero.strip()
     if not punto_venta.isdigit() or not numero.isdigit():
         return None
-    if len(punto_venta) <= 4:
-        punto_venta = punto_venta.zfill(4)
-    else:
-        punto_venta = punto_venta.zfill(5)
+    punto_venta = punto_venta.zfill(5)
     numero = numero.zfill(8)
     return f"{punto_venta}-{numero}"
 
@@ -103,34 +100,47 @@ def process_factura_import(import_id: int) -> None:
                     "Faltan campos obligatorios: " + ", ".join(missing)
                 )
 
-            monotributista_id = factura_import.monotributista_id or match_monotributista(
-                data.get("cuit_emisor"), data.get("facturador")
-            )
-            if monotributista_id:
-                factura_import.monotributista_id = monotributista_id
-            if monotributista_id:
-                existing = Factura.query.filter_by(
-                    monotributista_id=monotributista_id,
-                    tipo_comp=tipo_comp,
-                    numero_comp=numero_comp,
-                ).first()
-                if existing:
-                    raise ValueError(
-                        "Ya existe una factura con ese numero y punto de venta para este monotributista."
-                    )
+            cuit_emisor = data.get("cuit_emisor")
+            if not cuit_emisor:
+                raise ValueError("Falta cuit_emisor del facturador")
 
-            factura = Factura(
+            monotributista = Monotributista.query.filter_by(cuit=cuit_emisor).first()
+            if not monotributista:
+                raise ValueError(
+                    "El CUIT del facturador no existe en la base. Cargue el monotributista antes de importar."
+                )
+            if (
+                factura_import.monotributista_id
+                and factura_import.monotributista_id != monotributista.id
+            ):
+                raise ValueError(
+                    "El monotributista seleccionado no coincide con el CUIT del facturador."
+                )
+
+            monotributista_id = monotributista.id
+            factura_import.monotributista_id = monotributista_id
+
+            existing = Factura.query.filter_by(
                 monotributista_id=monotributista_id,
-                fecha=fecha_emision,
                 tipo_comp=tipo_comp,
                 numero_comp=numero_comp,
-                cuit_receptor=cuit_receptor,
-                razon_social_receptor=data.get("razon_receptor"),
-                importe_total=importe_total,
-                fecha_desde=fecha_desde,
-                fecha_hasta=fecha_hasta,
-                concepto=data.get("concepto"),
-            )
+            ).first()
+            if existing:
+                raise ValueError(
+                    "Ya existe una factura con ese numero y punto de venta para este monotributista."
+                )
+
+            factura = Factura()
+            factura.monotributista_id = monotributista_id
+            factura.fecha = fecha_emision
+            factura.tipo_comp = tipo_comp
+            factura.numero_comp = numero_comp
+            factura.cuit_receptor = cuit_receptor
+            factura.razon_social_receptor = data.get("razon_receptor")
+            factura.importe_total = importe_total
+            factura.fecha_desde = fecha_desde
+            factura.fecha_hasta = fecha_hasta
+            factura.concepto = data.get("concepto")
             db.session.add(factura)
             db.session.flush()
 

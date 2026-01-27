@@ -73,7 +73,7 @@ def split_numero_comp(value: str | None) -> tuple[str, str]:
     if "-" in value:
         punto_venta, nro = value.split("-", 1)
     else:
-        punto_venta, nro = value[:4], value[4:]
+        punto_venta, nro = value[:5], value[5:]
 
     def normalize(part: str) -> str:
         if not part:
@@ -588,6 +588,9 @@ def edit_monotributista(monotributista_id):
 @login_required
 def delete_monotributista(monotributista_id):
     monotributista = Monotributista.query.get_or_404(monotributista_id)
+    FacturaImport.query.filter_by(monotributista_id=monotributista.id).update(
+        {FacturaImport.monotributista_id: None}, synchronize_session=False
+    )
     db.session.delete(monotributista)
     db.session.commit()
     flash("Monotributista eliminado.", "success")
@@ -702,6 +705,24 @@ def create_factura():
         session["open_modal"] = "factura-imports"
         return redirect(url_for("main.dashboard", tab="facturas"))
 
+    monotributista = Monotributista.query.get(int(monotributista_id))
+    if not monotributista:
+        db.session.add(
+            FacturaImport(
+                monotributista_id=None,
+                status="failed",
+                pdf_path="",
+                source="manual",
+                result_message=(
+                    "El monotributista seleccionado no existe. Carguelo antes de importar."
+                ),
+                processed_at=datetime.now(timezone.utc),
+            )
+        )
+        db.session.commit()
+        session["open_modal"] = "factura-imports"
+        return redirect(url_for("main.dashboard", tab="facturas"))
+
     if tipo_comp.upper().startswith("NC") and importe_total > 0:
         importe_total = -importe_total
 
@@ -723,7 +744,7 @@ def create_factura():
     if is_export:
         punto_venta = punto_venta or "0"
 
-    numero_comp = f"{punto_venta.zfill(4)}-{nro_comp.zfill(8)}"
+    numero_comp = f"{punto_venta.zfill(5)}-{nro_comp.zfill(8)}"
     existing = Factura.query.filter_by(
         monotributista_id=int(monotributista_id),
         tipo_comp=tipo_comp,
@@ -829,7 +850,7 @@ def edit_factura(factura_id):
 
             if is_export:
                 punto_venta = punto_venta or "0"
-            numero_comp = f"{punto_venta.zfill(4)}-{nro_comp.zfill(8)}"
+            numero_comp = f"{punto_venta.zfill(5)}-{nro_comp.zfill(8)}"
             existing = Factura.query.filter(
                 Factura.monotributista_id == int(monotributista_id),
                 Factura.tipo_comp == tipo_comp,
