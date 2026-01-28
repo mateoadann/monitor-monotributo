@@ -6,6 +6,10 @@
       <span class="stat__label">Monotributistas</span>
       <strong>{{ monotributistas | length }}</strong>
     </div>
+    <div class="stat stat--critical">
+      <span class="stat__label">Exclusion</span>
+      <strong>{{ count_exclusion }}</strong>
+    </div>
     <div class="stat stat--danger">
       <span class="stat__label">
         Alerta
@@ -36,9 +40,9 @@
   <div class="tabs__panel {% if active_tab == 'monotributistas' %}is-active{% endif %}" id="monotributistas">
     <div class="panel__header">
       <h2>Listado de monotributistas</h2>
-      <span class="panel__hint">Gestiona datos fiscales y categorias. Corte: {{ fecha_corte_label }}</span>
+      <span class="panel__hint">Gestiona datos fiscales y categorias.</span>
     </div>
-    <div class="table-tools">
+    <div class="table-tools table-tools--mono">
       <label class="field field--inline">
         Buscar
         <input type="text" id="monoSearch" placeholder="Buscar por razon, CUIT o categoria">
@@ -60,6 +64,15 @@
           <option value="categoria_asc">Categoria actual A-Z</option>
         </select>
       </label>
+      <form class="selector selector--inline" method="get">
+        <input type="hidden" name="tab" value="monotributistas">
+        <label class="field field--inline" data-default-cutoff="{{ mono_anchor_default_cutoff_label }}">
+          Periodo de corte
+          <input type="hidden" name="mono_anchor" id="monoAnchorValue" value="{{ mono_anchor_value }}">
+          <input type="text" data-month-picker data-hidden-input="#monoAnchorValue" data-anchor="{{ mono_anchor_value }}" data-default-anchor="{{ mono_anchor_default_value }}" autocomplete="off" readonly>
+        </label>
+        <button class="outline" type="submit">Ver periodo</button>
+      </form>
     </div>
     <div class="panel__actions">
       <button class="primary" type="button" data-open="monotributista">Nuevo monotributista</button>
@@ -263,7 +276,7 @@
           <label class="field">
             Periodo de corte ({{ anchor_cutoff_label }})
             <input type="hidden" name="anchor" id="anchorMonthValue" value="{{ anchor_value }}">
-            <input type="text" id="anchorMonthDisplay" data-anchor="{{ anchor_value }}" autocomplete="off" readonly>
+            <input type="text" data-month-picker data-hidden-input="#anchorMonthValue" data-anchor="{{ anchor_value }}" autocomplete="off" readonly>
           </label>
           <button class="outline" type="submit">Ver periodo</button>
         </form>
@@ -456,6 +469,10 @@
             <div class="help-estado help-estado--sube">
               <span class="badge badge--sube">Sube</span>
               <p>La facturacion supera el tope de la categoria actual. <strong>Requiere recategorizacion a una categoria superior.</strong></p>
+            </div>
+            <div class="help-estado help-estado--exclusion">
+              <span class="badge badge--exclusion">Exclusion</span>
+              <p>La facturacion supera el ultimo tope permitido. <strong>Situacion critica y fuera de regimen.</strong></p>
             </div>
             <div class="help-estado help-estado--mantiene">
               <span class="badge badge--mantiene">Mantiene</span>
@@ -763,10 +780,42 @@
 <script>
   const tabs = document.querySelectorAll(".tab");
   const panels = document.querySelectorAll(".tabs__panel");
+  const monoPanel = document.getElementById("monotributistas");
+  const resetMonoPicker = () => {
+    const resettable = document.querySelectorAll("[data-default-anchor]");
+    resettable.forEach((input) => {
+      if (typeof input._resetMonthPicker === "function") {
+        input._resetMonthPicker();
+      }
+    });
+    const cutoffDefault = monoPanel
+      ? monoPanel.querySelector("[data-default-cutoff]")?.dataset.defaultCutoff
+      : null;
+    if (cutoffDefault) {
+      const panelCutoff = monoPanel.querySelector("[data-mono-cutoff]");
+      if (panelCutoff) {
+        panelCutoff.textContent = cutoffDefault;
+      }
+      const periodLabel = monoPanel.querySelector("[data-mono-period-label]");
+      if (periodLabel) {
+        periodLabel.textContent = cutoffDefault;
+      }
+    }
+  };
 
   tabs.forEach((tab) => {
     tab.addEventListener("click", () => {
       const target = tab.dataset.tab;
+      if (monoPanel && monoPanel.classList.contains("is-active") && target !== "monotributistas") {
+        resetMonoPicker();
+        const url = new URL(window.location.href);
+        if (url.searchParams.has("mono_anchor")) {
+          url.searchParams.delete("mono_anchor");
+          url.searchParams.set("tab", target);
+          window.location = url.toString();
+          return;
+        }
+      }
       tabs.forEach((btn) => btn.classList.remove("is-active"));
       panels.forEach((panel) => panel.classList.remove("is-active"));
       tab.classList.add("is-active");
@@ -1047,9 +1096,8 @@
     document.body.classList.toggle("modal-open", Boolean(hasOpen));
   };
 
-  const monthPickerInput = document.getElementById("anchorMonthDisplay");
-  const anchorHiddenInput = document.getElementById("anchorMonthValue");
-  if (monthPickerInput) {
+  const monthPickerInputs = document.querySelectorAll("[data-month-picker]");
+  if (monthPickerInputs.length) {
     const airDatepickerLocaleEs = {
       days: ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"],
       daysShort: ["Dom", "Lun", "Mar", "Mie", "Jue", "Vie", "Sab"],
@@ -1075,6 +1123,7 @@
       timeFormat: "hh:mm aa",
       firstDay: 1,
     };
+
     const parseAnchorValue = (value) => {
       if (!value) {
         return null;
@@ -1088,37 +1137,59 @@
       return new Date(year, month - 1, 1);
     };
 
-    const anchorValue =
-      (anchorHiddenInput && anchorHiddenInput.value) ||
-      monthPickerInput.dataset.anchor ||
-      "";
-    const selectedDate = parseAnchorValue(anchorValue);
     const formatMonthLabel = (date) => {
       const monthName = airDatepickerLocaleEs.months[date.getMonth()] || "";
       return `${monthName} ${date.getFullYear()}`.trim();
     };
-    const setHiddenValue = (date) => {
-      if (!anchorHiddenInput) {
+
+    const initMonthPicker = (input) => {
+      const hiddenSelector = input.dataset.hiddenInput;
+      const hiddenInput = hiddenSelector
+        ? document.querySelector(hiddenSelector)
+        : null;
+      const anchorValue =
+        (hiddenInput && hiddenInput.value) || input.dataset.anchor || "";
+      const selectedDate = parseAnchorValue(anchorValue);
+      const defaultAnchorValue = input.dataset.defaultAnchor || "";
+      const defaultDate = parseAnchorValue(defaultAnchorValue);
+
+      const setHiddenValue = (date) => {
+        if (!hiddenInput) {
+          return;
+        }
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, "0");
+        hiddenInput.value = `${year}-${month}`;
+      };
+
+      const applyDate = (date) => {
+        if (!date) {
+          return;
+        }
+        input.value = formatMonthLabel(date);
+        setHiddenValue(date);
+      };
+
+      if (selectedDate) {
+        applyDate(selectedDate);
+      }
+
+      input._resetMonthPicker = () => {
+        applyDate(defaultDate);
+      };
+
+      if (!window.AirDatepicker) {
         return;
       }
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, "0");
-      anchorHiddenInput.value = `${year}-${month}`;
-    };
 
-    if (selectedDate) {
-      monthPickerInput.value = formatMonthLabel(selectedDate);
-      setHiddenValue(selectedDate);
-    }
-    if (window.AirDatepicker) {
       const syncSelectedDate = (picked) => {
         if (!picked) {
           return;
         }
-        monthPickerInput.value = formatMonthLabel(picked);
-        setHiddenValue(picked);
+        applyDate(picked);
       };
-      const monthPicker = new AirDatepicker(monthPickerInput, {
+
+      const monthPicker = new AirDatepicker(input, {
         view: "months",
         minView: "months",
         dateFormat: "MMMM yyyy",
@@ -1130,19 +1201,25 @@
           syncSelectedDate(picked);
         },
       });
+
       if (selectedDate) {
         syncSelectedDate(selectedDate);
       }
+
       const showPicker = () => monthPicker.show();
-      monthPickerInput.addEventListener("click", showPicker);
-      monthPickerInput.addEventListener("focus", showPicker);
-      monthPickerInput.addEventListener("keydown", (event) => {
+      input.addEventListener("click", showPicker);
+      input.addEventListener("focus", showPicker);
+      input.addEventListener("keydown", (event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
           showPicker();
         }
       });
-    }
+    };
+
+    monthPickerInputs.forEach((input) => {
+      initMonthPicker(input);
+    });
   }
 
   const openModal = (name) => {

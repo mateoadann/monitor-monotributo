@@ -203,6 +203,22 @@ def categoria_por_total(total: Decimal, topes: list[CategoriaTope]):
     return topes_sorted[-1].categoria
 
 
+def max_tope_facturacion(topes: list[CategoriaTope]):
+    if not topes:
+        return None
+    if all(tope.tope_facturacion == 0 for tope in topes):
+        return None
+    return max(topes, key=lambda tope: tope.tope_facturacion).tope_facturacion
+
+
+def is_exclusion(total: Decimal, topes: list[CategoriaTope]) -> bool:
+    max_tope = max_tope_facturacion(topes)
+    if max_tope is None:
+        return False
+    total = total.quantize(Decimal("0.01"))
+    return total > max_tope
+
+
 def topes_por_categoria(topes: list[CategoriaTope]) -> dict[int, CategoriaTope]:
     return {tope.categoria_id: tope for tope in topes}
 
@@ -266,25 +282,36 @@ def build_calculo(
     month_totals, total = calcular_totales(monotributista, anchor)
     topes_map = topes_por_categoria(topes)
     categoria_actual = monotributista.categoria_actual
-    categoria_corresponde = categoria_por_total(total, topes) or categoria_actual
-    estado = estado_categoria(categoria_actual, categoria_corresponde)
-
-    tope_actual = topes_map.get(categoria_actual.id) if categoria_actual else None
-    tope_corresponde = (
-        topes_map.get(categoria_corresponde.id) if categoria_corresponde else None
-    )
-
-    return {
-        "categoria_actual": categoria_actual.nombre if categoria_actual else "-",
-        "categoria_corresponde": categoria_corresponde.nombre if categoria_corresponde else "-",
-        "tope_actual": (
-            format_currency(tope_actual.tope_facturacion) if tope_actual else "-"
-        ),
-        "tope_corresponde": (
+    exclusion = is_exclusion(total, topes)
+    if exclusion:
+        categoria_corresponde_label = "Exclusion"
+        estado = "exclusion"
+        max_tope = max_tope_facturacion(topes)
+        tope_corresponde_label = format_currency(max_tope) if max_tope else "-"
+    else:
+        categoria_corresponde = categoria_por_total(total, topes) or categoria_actual
+        categoria_corresponde_label = (
+            categoria_corresponde.nombre if categoria_corresponde else "-"
+        )
+        estado = estado_categoria(categoria_actual, categoria_corresponde)
+        tope_corresponde = (
+            topes_map.get(categoria_corresponde.id) if categoria_corresponde else None
+        )
+        tope_corresponde_label = (
             format_currency(tope_corresponde.tope_facturacion)
             if tope_corresponde
             else "-"
+        )
+
+    tope_actual = topes_map.get(categoria_actual.id) if categoria_actual else None
+
+    return {
+        "categoria_actual": categoria_actual.nombre if categoria_actual else "-",
+        "categoria_corresponde": categoria_corresponde_label,
+        "tope_actual": (
+            format_currency(tope_actual.tope_facturacion) if tope_actual else "-"
         ),
+        "tope_corresponde": tope_corresponde_label,
         "estado_categoria": estado,
         "total_12m": format_currency(total),
         "mensual": {label: format_currency(value) for label, value in month_totals.items()},
@@ -359,17 +386,45 @@ def dashboard():
     anchor_actual = date.today().replace(day=1) - timedelta(days=1)
     vigencia_actual = obtener_vigencia_para_fecha(anchor_actual)
     topes_actual = obtener_topes_vigencia(vigencia_actual)
+
+    mono_anchor_default_date = anchor_actual.replace(day=1)
+    mono_anchor_param = request.args.get("mono_anchor") if active_tab == "monotributistas" else None
+    mono_anchor_date = parse_anchor(mono_anchor_param) or mono_anchor_default_date
+    mono_anchor_cutoff = (mono_anchor_date.replace(day=1) + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+    mono_anchor_cutoff_label = mono_anchor_cutoff.strftime("%d/%m/%y")
+    mono_anchor_value = f"{mono_anchor_date.year:04d}-{mono_anchor_date.month:02d}"
+    mono_anchor_default_value = (
+        f"{mono_anchor_default_date.year:04d}-{mono_anchor_default_date.month:02d}"
+    )
+    mono_anchor_default_cutoff = (
+        (mono_anchor_default_date.replace(day=1) + timedelta(days=32))
+        .replace(day=1)
+        - timedelta(days=1)
+    )
+    mono_anchor_default_cutoff_label = mono_anchor_default_cutoff.strftime("%d/%m/%y")
+    vigencia_mono = obtener_vigencia_para_fecha(mono_anchor_date)
+    topes_mono = obtener_topes_vigencia(vigencia_mono)
     monotributistas = []
     count_sube = 0
     count_baja = 0
+    count_exclusion = 0
     for item in monotributistas_raw:
-        _, total_actual = calcular_totales(item, anchor_actual)
-        corresponde = categoria_por_total(total_actual, topes_actual) or item.categoria_actual
-        estado = estado_categoria(item.categoria_actual, corresponde)
-        if estado == "sube":
-            count_sube += 1
-        elif estado == "baja":
-            count_baja += 1
+        _, total_actual = calcular_totales(item, mono_anchor_date)
+        exclusion = is_exclusion(total_actual, topes_mono)
+        if exclusion:
+            corresponde_label = "Exclusion"
+            estado = "exclusion"
+            count_exclusion += 1
+        else:
+            corresponde = categoria_por_total(total_actual, topes_mono) or item.categoria_actual
+            corresponde_label = (
+                corresponde.nombre if corresponde else (item.categoria_actual.nombre if item.categoria_actual else "-")
+            )
+            estado = estado_categoria(item.categoria_actual, corresponde)
+            if estado == "sube":
+                count_sube += 1
+            elif estado == "baja":
+                count_baja += 1
         monotributistas.append(
             {
                 "id": item.id,
@@ -377,9 +432,7 @@ def dashboard():
                 "cuit": item.cuit,
                 "clave_fiscal": item.clave_fiscal,
                 "categoria_actual": item.categoria_actual.nombre if item.categoria_actual else "-",
-                "categoria_corresponde": (
-                    corresponde.nombre if corresponde else (item.categoria_actual.nombre if item.categoria_actual else "-")
-                ),
+                "categoria_corresponde": corresponde_label,
                 "estado_categoria": estado,
             }
         )
@@ -411,7 +464,6 @@ def dashboard():
         seleccionado = monotributistas_raw[0]
     detalle = build_calculo(seleccionado, anchor_date, topes_anchor) if seleccionado else None
 
-    fecha_corte_label = anchor_actual.strftime("%d/%m/%y")
     mono_form = session.pop("mono_form", None)
     open_modal = session.pop("open_modal", None)
     factura_import_logs = []
@@ -440,9 +492,13 @@ def dashboard():
         active_tab=active_tab,
         anchor_value=anchor_value,
         anchor_cutoff_label=anchor_cutoff_label,
+        mono_anchor_value=mono_anchor_value,
+        mono_anchor_default_value=mono_anchor_default_value,
+        mono_anchor_cutoff_label=mono_anchor_cutoff_label,
+        mono_anchor_default_cutoff_label=mono_anchor_default_cutoff_label,
         count_sube=count_sube,
         count_baja=count_baja,
-        fecha_corte_label=fecha_corte_label,
+        count_exclusion=count_exclusion,
         mono_form=mono_form,
         open_modal=open_modal,
         factura_import_logs=factura_import_logs,
@@ -705,7 +761,7 @@ def create_factura():
         session["open_modal"] = "factura-imports"
         return redirect(url_for("main.dashboard", tab="facturas"))
 
-    monotributista = Monotributista.query.get(int(monotributista_id))
+    monotributista = db.session.get(Monotributista, int(monotributista_id))
     if not monotributista:
         db.session.add(
             FacturaImport(
