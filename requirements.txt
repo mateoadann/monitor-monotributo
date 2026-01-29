@@ -3,6 +3,7 @@ Flask-Login==0.6.3
 Flask-SQLAlchemy==3.1.1
 Werkzeug==3.0.1
 pdfplumber==0.11.0
+playwright==1.49.1
 psycopg2-binary==2.9.9
 redis==5.0.1
 rq==1.16.1

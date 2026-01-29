@@ -13,14 +13,13 @@ login_manager.login_view = "auth.login"
 def create_app(init_db: bool = True):
     app = Flask(__name__)
     app.config["SECRET_KEY"] = "dev-change-me"
-    default_db = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "monitor.db"))
     default_uploads = os.path.abspath(
         os.path.join(os.path.dirname(__file__), "..", "uploads")
     )
-    app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get(
-        "DATABASE_URL",
-        "sqlite:///" + default_db,
-    )
+    db_url = os.environ.get("DATABASE_URL")
+    if not db_url:
+        raise RuntimeError("DATABASE_URL must be set.")
+    app.config["SQLALCHEMY_DATABASE_URI"] = db_url
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["UPLOAD_FOLDER"] = os.environ.get("UPLOAD_FOLDER", default_uploads)
     app.config["REDIS_URL"] = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
