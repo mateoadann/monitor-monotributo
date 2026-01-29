@@ -21,7 +21,7 @@ from website.models import (
     Vigencia,
     db,
 )
-from website.pdf_jobs import process_factura_import
+from website.pdf_jobs import cleanup_pdf_path, handle_import_failure, process_factura_import
 from website.queue import get_queue
 
 main_bp = Blueprint("main", __name__)
@@ -284,7 +284,7 @@ def build_calculo(
     categoria_actual = monotributista.categoria_actual
     exclusion = is_exclusion(total, topes)
     if exclusion:
-        categoria_corresponde_label = "Exclusion"
+        categoria_corresponde_label = "Exclusión"
         estado = "exclusion"
         max_tope = max_tope_facturacion(topes)
         tope_corresponde_label = format_currency(max_tope) if max_tope else "-"
@@ -412,7 +412,7 @@ def dashboard():
         _, total_actual = calcular_totales(item, mono_anchor_date)
         exclusion = is_exclusion(total_actual, topes_mono)
         if exclusion:
-            corresponde_label = "Exclusion"
+            corresponde_label = "Exclusión"
             estado = "exclusion"
             count_exclusion += 1
         else:
@@ -706,6 +706,7 @@ def create_factura():
                     factura_import.id,
                     job_timeout=300,
                     retry=Retry(max=3, interval=[10, 30, 60]),
+                    on_failure=handle_import_failure,
                 )
                 enqueued += 1
                 factura_import.result_message = "En cola para procesamiento."
@@ -714,6 +715,7 @@ def create_factura():
                 factura_import.error = f"No se pudo encolar: {exc}"
                 factura_import.result_message = factura_import.error
                 factura_import.processed_at = datetime.now(timezone.utc)
+                cleanup_pdf_path(pdf_path, upload_root)
         db.session.commit()
 
         if enqueued:

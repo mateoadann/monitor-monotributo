@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 from decimal import Decimal
 
@@ -35,12 +36,58 @@ def match_monotributista(cuit: str | None, razon: str | None) -> int | None:
     return None
 
 
+def cleanup_pdf_path(pdf_path: str | None, upload_root: str | None) -> None:
+    if not pdf_path:
+        return
+    abs_path = os.path.abspath(pdf_path)
+    if not os.path.exists(abs_path):
+        return
+    try:
+        os.remove(abs_path)
+    except OSError:
+        return
+    if not upload_root:
+        return
+    upload_root = os.path.abspath(upload_root)
+    if os.path.commonpath([abs_path, upload_root]) != upload_root:
+        return
+    current = os.path.dirname(abs_path)
+    while os.path.commonpath([current, upload_root]) == upload_root:
+        if current == upload_root:
+            break
+        try:
+            os.rmdir(current)
+        except OSError:
+            break
+        current = os.path.dirname(current)
+
+
+def handle_import_failure(job, exc_type, exc_value, tb) -> None:
+    import_id = job.args[0] if job and job.args else None
+    if not import_id:
+        return
+    app = create_app()
+    with app.app_context():
+        factura_import = db.session.get(FacturaImport, import_id)
+        if not factura_import:
+            return
+        if factura_import.status != "done":
+            error_message = str(exc_value) if exc_value else "Fallo en procesamiento"
+            factura_import.status = "failed"
+            factura_import.error = error_message
+            factura_import.result_message = error_message
+            factura_import.processed_at = datetime.now(timezone.utc)
+            db.session.commit()
+        cleanup_pdf_path(factura_import.pdf_path, app.config.get("UPLOAD_FOLDER"))
+
+
 def process_factura_import(import_id: int) -> None:
     app = create_app()
     with app.app_context():
         factura_import = db.session.get(FacturaImport, import_id)
         if not factura_import:
             return
+        pdf_path = factura_import.pdf_path
         factura_import.status = "processing"
         factura_import.error = None
         factura_import.result_message = None
@@ -150,9 +197,14 @@ def process_factura_import(import_id: int) -> None:
             factura_import.result_message = f"Factura creada: {numero_comp}"
             db.session.commit()
         except Exception as exc:
-            factura_import.status = "failed"
-            factura_import.error = str(exc)
-            factura_import.result_message = str(exc)
-            factura_import.processed_at = datetime.now(timezone.utc)
-            db.session.commit()
+            db.session.rollback()
+            factura_import = db.session.get(FacturaImport, import_id)
+            if factura_import:
+                factura_import.status = "failed"
+                factura_import.error = str(exc)
+                factura_import.result_message = str(exc)
+                factura_import.processed_at = datetime.now(timezone.utc)
+                db.session.commit()
             raise
+        finally:
+            cleanup_pdf_path(pdf_path, app.config.get("UPLOAD_FOLDER"))

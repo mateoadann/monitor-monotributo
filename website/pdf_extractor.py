@@ -115,13 +115,13 @@ def extract_receptor(lines: list[str]) -> tuple[str | None, str | None]:
 
 def extract_tipo_comp(text: str) -> str | None:
     match = re.search(
-        r"\b([A-Z])\s+(FACTURA|NOTA DE CREDITO|EXPORT INVOICE)\b",
+        r"\b([A-Z])\s+(FACTURA|NOTA DE CREDITO|NOTA DE DEBITO|RECIBO|EXPORT INVOICE)\b",
         text,
         re.I,
     )
     if not match:
         match = re.search(
-            r"\b(FACTURA|NOTA DE CREDITO|EXPORT INVOICE)\s+([A-Z])\b",
+            r"\b(FACTURA|NOTA DE CREDITO|NOTA DE DEBITO|RECIBO|EXPORT INVOICE)\s+([A-Z])\b",
             text,
             re.I,
         )
@@ -136,8 +136,13 @@ def extract_tipo_comp(text: str) -> str | None:
             letter = match.group(2)
     else:
         return None
-    if "NOTA DE CREDITO" in label.upper():
+    label_upper = label.upper()
+    if "NOTA DE CREDITO" in label_upper:
         return f"NC{letter}"
+    if "NOTA DE DEBITO" in label_upper:
+        return f"ND{letter}"
+    if "RECIBO" in label_upper:
+        return f"R{letter}"
     return letter
 
 
