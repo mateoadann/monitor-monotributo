@@ -83,7 +83,7 @@ class Factura(db.Model):
     importe_total = db.Column(db.Numeric(14, 2), nullable=False)
     fecha_desde = db.Column(db.Date)
     fecha_hasta = db.Column(db.Date)
-    concepto = db.Column(db.String(240))
+    concepto = db.Column(db.Text)
 
     monotributista = db.relationship("Monotributista", back_populates="facturas")
 
