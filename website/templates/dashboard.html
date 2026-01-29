@@ -7,7 +7,7 @@
       <strong>{{ monotributistas | length }}</strong>
     </div>
     <div class="stat stat--critical">
-      <span class="stat__label">Exclusion</span>
+      <span class="stat__label">Exclusión</span>
       <strong>{{ count_exclusion }}</strong>
     </div>
     <div class="stat stat--danger">
@@ -166,6 +166,7 @@
     <div class="panel__actions">
       <button class="primary" type="button" data-open="factura">Cargar factura</button>
       <button class="ghost-button" type="button" data-open="factura-imports">Ver importaciones</button>
+      <button class="ghost-button" type="button" data-open="rpa">Procesar RPA</button>
     </div>
     <div class="table table--dense">
       <div class="table__row table__head table__row--facturas">
@@ -471,7 +472,7 @@
               <p>La facturacion supera el tope de la categoria actual. <strong>Requiere recategorizacion a una categoria superior.</strong></p>
             </div>
             <div class="help-estado help-estado--exclusion">
-              <span class="badge badge--exclusion">Exclusion</span>
+              <span class="badge badge--exclusion">Exclusión</span>
               <p>La facturacion supera el ultimo tope permitido. <strong>Situacion critica y fuera de regimen.</strong></p>
             </div>
             <div class="help-estado help-estado--mantiene">
@@ -718,6 +719,106 @@
   </div>
 </div>
 
+<div class="modal modal--wide" data-modal="rpa">
+  <div class="modal__content">
+    <div class="modal__header">
+      <h3>Proceso RPA</h3>
+      <button class="modal__close" type="button" data-close>&times;</button>
+    </div>
+    <form class="panel__form panel__form--rpa">
+      <div class="form-grid">
+        <label class="field">
+          Fecha desde
+          <input type="text" name="rpa_fecha_desde" placeholder="01/12/2025">
+        </label>
+        <label class="field">
+          Fecha hasta
+          <input type="text" name="rpa_fecha_hasta" placeholder="31/01/2026">
+        </label>
+      </div>
+      <div class="form-section">
+        <span class="form-section__title">Grupo de monotributistas</span>
+        <div class="choice-group">
+          <label class="choice">
+            <input type="radio" name="rpa_group" value="all" checked>
+            Todos los monotributistas
+          </label>
+          <label class="choice">
+            <input type="radio" name="rpa_group" value="categorias">
+            Por categoria actual
+          </label>
+          <label class="choice">
+            <input type="radio" name="rpa_group" value="seleccion">
+            Seleccion manual
+          </label>
+        </div>
+      </div>
+      <div class="form-grid">
+        <div class="form-section">
+          <span class="form-section__title">Categorias</span>
+          <div class="checklist checklist--scroll">
+            {% for categoria in categorias %}
+            <label class="checklist__item">
+              <input type="checkbox" name="rpa_categorias" value="{{ categoria.id }}">
+              {{ categoria.nombre }}
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="form-section">
+          <span class="form-section__title">Monotributistas</span>
+          <input class="field__search" type="text" placeholder="Buscar razon social">
+          <div class="checklist checklist--scroll">
+            {% for item in monotributistas_select %}
+            <label class="checklist__item">
+              <input type="checkbox" name="rpa_monotributistas" value="{{ item.id }}">
+              {{ item.razon_social }}
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+      <div class="form-section">
+        <span class="form-section__title">Tipos de comprobante</span>
+        <div class="checklist checklist--grid">
+          <label class="checklist__item">
+            <input type="checkbox" name="rpa_tipos" value="11" checked>
+            11 - Factura C
+          </label>
+          <label class="checklist__item">
+            <input type="checkbox" name="rpa_tipos" value="12" checked>
+            12 - Nota de debito C
+          </label>
+          <label class="checklist__item">
+            <input type="checkbox" name="rpa_tipos" value="13" checked>
+            13 - Nota de credito C
+          </label>
+          <label class="checklist__item">
+            <input type="checkbox" name="rpa_tipos" value="15" checked>
+            15 - Recibo C
+          </label>
+          <label class="checklist__item">
+            <input type="checkbox" name="rpa_tipos" value="19" checked>
+            19 - Factura exterior (E)
+          </label>
+          <label class="checklist__item">
+            <input type="checkbox" name="rpa_tipos" value="20" checked>
+            20 - Nota de debito exterior (E)
+          </label>
+          <label class="checklist__item">
+            <input type="checkbox" name="rpa_tipos" value="21" checked>
+            21 - Nota de credito exterior (E)
+          </label>
+        </div>
+      </div>
+      <div class="form-actions">
+        <p class="form-hint">Integracion pendiente del proceso RPA.</p>
+        <button class="primary" type="button">Iniciar RPA</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <div class="modal" data-modal="factura-view">
   <div class="modal__content">
     <div class="modal__header">
@@ -788,19 +889,6 @@
         input._resetMonthPicker();
       }
     });
-    const cutoffDefault = monoPanel
-      ? monoPanel.querySelector("[data-default-cutoff]")?.dataset.defaultCutoff
-      : null;
-    if (cutoffDefault) {
-      const panelCutoff = monoPanel.querySelector("[data-mono-cutoff]");
-      if (panelCutoff) {
-        panelCutoff.textContent = cutoffDefault;
-      }
-      const periodLabel = monoPanel.querySelector("[data-mono-period-label]");
-      if (periodLabel) {
-        periodLabel.textContent = cutoffDefault;
-      }
-    }
   };
 
   tabs.forEach((tab) => {

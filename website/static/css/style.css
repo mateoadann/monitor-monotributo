@@ -386,6 +386,69 @@ body {
   margin-top: 8px;
 }
 
+.panel__form--rpa {
+  gap: 16px;
+}
+
+.form-section {
+  display: grid;
+  gap: 10px;
+}
+
+.form-section__title {
+  font-weight: 600;
+  color: var(--navy-40);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.choice-group {
+  display: grid;
+  gap: 8px;
+}
+
+.choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--navy-40);
+}
+
+.checklist {
+  display: grid;
+  gap: 8px;
+  background: #fff;
+  border: 1px solid #d8dce6;
+  border-radius: 12px;
+  padding: 10px;
+}
+
+.checklist--scroll {
+  max-height: 180px;
+  overflow: auto;
+}
+
+.checklist--grid {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.checklist__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--navy-40);
+}
+
+.field__search {
+  border: 1px solid #d8dce6;
+  border-radius: 12px;
+  padding: 8px 12px;
+  font-family: inherit;
+}
+
 .field {
   display: grid;
   gap: 6px;
