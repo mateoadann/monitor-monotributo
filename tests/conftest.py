@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
+from urllib.parse import urlparse
 
 import pytest
 
@@ -21,6 +22,17 @@ def app(tmp_path, monkeypatch):
         raise RuntimeError("DATABASE_URL_TEST or DATABASE_URL must be set for tests.")
     if not db_url.startswith("postgresql"):
         raise RuntimeError("Tests require a PostgreSQL DATABASE_URL.")
+    if os.path.exists("/.dockerenv"):
+        parsed = urlparse(db_url)
+        if parsed.hostname in {"localhost", "127.0.0.1", "::1"}:
+            userinfo = ""
+            if parsed.username:
+                userinfo = parsed.username
+                if parsed.password:
+                    userinfo += f":{parsed.password}"
+                userinfo += "@"
+            port = f":{parsed.port}" if parsed.port else ""
+            db_url = parsed._replace(netloc=f"{userinfo}postgres{port}").geturl()
     monkeypatch.setenv("DATABASE_URL", db_url)
     monkeypatch.setenv("UPLOAD_FOLDER", str(uploads_path))
 
