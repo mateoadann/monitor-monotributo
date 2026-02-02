@@ -2,6 +2,7 @@
 
 ## Como funcionan
 Los tests usan pytest y un set de fixtures que levantan una app Flask conectada a PostgreSQL para cada test.
+La forma recomendada de ejecutar tests es via Docker Compose.
 
 ### Estructura base
 - `tests/conftest.py` define el fixture `app`: lee `DATABASE_URL_TEST`/`DATABASE_URL`, exige PostgreSQL, setea `UPLOAD_FOLDER` a un tmp, crea la app con `create_app(init_db=False)`, crea tablas y un usuario admin, y al final hace `drop_all` para dejar la DB limpia.
@@ -9,8 +10,8 @@ Los tests usan pytest y un set de fixtures que levantan una app Flask conectada 
 
 ### Que prueba cada archivo
 - `tests/test_utils.py`: unit tests puros de helpers en `website.views` (`parse_decimal`, `format_currency`, `split_numero_comp`), sin DB.
-- `tests/test_calculos.py`: logica de categorias y prorrateo (`categoria_por_total`, `estado_categoria`, `calcular_totales`). Inserta datos en DB y verifica total mensual/anual.
-- `tests/test_views.py`: endpoints con `client` (login, creacion de monotributistas y facturas). Verifica respuesta HTML y estado real en DB.
+- `tests/test_calculos.py`: logica de categorias y prorrateo (`categoria_por_total`, `estado_categoria`, `calcular_totales`) y estado de exclusion (`build_calculo`). Inserta datos en DB y verifica total mensual/anual.
+- `tests/test_views.py`: endpoints con `client` (login, creacion de monotributistas y facturas), formato de numero de comprobante (manual y PDF), y comportamiento de `mono_anchor` en el listado. Verifica HTML y estado real en DB.
 
 ## Ejecutar tests con Docker (recomendado)
 ### Requisitos
@@ -36,6 +37,9 @@ docker compose build --no-cache web
 ```bash
 docker compose run --rm -e DATABASE_URL_TEST=postgresql+psycopg2://monitor:monitor@postgres:5432/monitor_test web python -m pytest
 ```
+
+### Nota
+- Dentro de Docker, si la URL de test apunta a `localhost`, el fixture la reescribe a `postgres` automaticamente.
 
 ### Notas utiles
 - Esto evita el problema de `localhost` porque dentro del contenedor el host es `postgres`.
