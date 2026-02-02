@@ -1,4 +1,8 @@
-# Monitor de Monotributo
+<div align="center">
+  <img src="website/static/img/analisys.png" alt="Analisis" width="100" />
+</div>
+
+<h1 align="center">Monitor de Monotributo</h1>
 
 Este proyecto resuelve el seguimiento del tope anual de facturacion para monotributistas. Centraliza facturas y notas de credito, prorratea importes por rango de fechas y sugiere la categoria correcta segun los topes vigentes.
 
