@@ -158,6 +158,26 @@ body {
   padding: 14px 18px;
   min-width: 120px;
   text-align: center;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+button.stat {
+  border: none;
+  font: inherit;
+  cursor: pointer;
+}
+
+button.stat:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+.stat--filter:hover {
+  transform: translateY(-1px);
+}
+
+.stat--filter.is-active {
+  box-shadow: 0 0 0 2px currentColor;
 }
 
 .stat--danger {
@@ -840,6 +860,36 @@ input[type="date"][data-air-picker="true"]::-webkit-calendar-picker-indicator {
   grid-template-columns: minmax(0, 2.2fr) minmax(0, 1fr);
   gap: 18px;
   align-items: start;
+}
+
+.calculo__main {
+  display: grid;
+  gap: 16px;
+}
+
+.calculo__margins {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.metric-card {
+  background: #f8fafb;
+  border-radius: 16px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.metric-card span {
+  font-size: 12px;
+  color: var(--navy-40);
+}
+
+.metric-card strong {
+  font-size: 20px;
+  color: var(--blue);
 }
 
 .calculo__side {
@@ -1526,6 +1576,10 @@ input[type="date"][data-air-picker="true"]::-webkit-calendar-picker-indicator {
   }
 
   .calculo__layout {
+    grid-template-columns: 1fr;
+  }
+
+  .calculo__margins {
     grid-template-columns: 1fr;
   }
 

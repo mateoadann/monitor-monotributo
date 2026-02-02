@@ -6,24 +6,24 @@
       <span class="stat__label">Monotributistas</span>
       <strong>{{ monotributistas | length }}</strong>
     </div>
-    <div class="stat stat--critical">
+    <button class="stat stat--critical stat--filter" type="button" data-mono-filter="exclusion" aria-pressed="false">
       <span class="stat__label">Exclusión</span>
       <strong>{{ count_exclusion }}</strong>
-    </div>
-    <div class="stat stat--danger">
+    </button>
+    <button class="stat stat--danger stat--filter" type="button" data-mono-filter="sube" aria-pressed="false">
       <span class="stat__label">
         Alerta
         <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="#000000" stroke-width="2.4" transform="rotate(180)"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <path d="M12.75 4C12.75 3.58579 12.4142 3.25 12 3.25C11.5858 3.25 11.25 3.58579 11.25 4L11.25 13.25H6.00002C5.69668 13.25 5.4232 13.4327 5.30711 13.713C5.19103 13.9932 5.25519 14.3158 5.46969 14.5303L11.4697 20.5303C11.6103 20.671 11.8011 20.75 12 20.75C12.1989 20.75 12.3897 20.671 12.5304 20.5303L18.5304 14.5303C18.7449 14.3158 18.809 13.9932 18.6929 13.713C18.5768 13.4327 18.3034 13.25 18 13.25H12.75L12.75 4Z" fill="#000000"></path> </g></svg>
       </span>
       <strong>{{ count_sube }}</strong>
-    </div>
-    <div class="stat stat--warning">
+    </button>
+    <button class="stat stat--warning stat--filter" type="button" data-mono-filter="baja" aria-pressed="false">
       <span class="stat__label">
         Alerta
         <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="#000000" stroke-width="2.4"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <path d="M12.75 4C12.75 3.58579 12.4142 3.25 12 3.25C11.5858 3.25 11.25 3.58579 11.25 4L11.25 13.25H6.00002C5.69668 13.25 5.4232 13.4327 5.30711 13.713C5.19103 13.9932 5.25519 14.3158 5.46969 14.5303L11.4697 20.5303C11.6103 20.671 11.8011 20.75 12 20.75C12.1989 20.75 12.3897 20.671 12.5304 20.5303L18.5304 14.5303C18.7449 14.3158 18.809 13.9932 18.6929 13.713C18.5768 13.4327 18.3034 13.25 18 13.25H12.75L12.75 4Z" fill="#000000"></path> </g></svg>
       </span>
       <strong>{{ count_baja }}</strong>
-    </div>
+    </button>
   </div>
   <div class="tabs__controls tabs__controls--topbar">
     <button class="tab {% if active_tab == 'monotributistas' %}is-active{% endif %}" type="button" data-tab="monotributistas">Monotributista</button>
@@ -87,7 +87,7 @@
         <span>Acciones</span>
       </div>
       {% for item in monotributistas %}
-      <div class="table__row table__row--mono" data-row="mono" data-razon="{{ item.razon_social | lower }}" data-cuit="{{ item.cuit }}" data-categoria="{{ item.categoria_actual }}" data-corresponde="{{ item.categoria_corresponde }}" data-search="{{ (item.razon_social ~ ' ' ~ item.cuit ~ ' ' ~ item.categoria_actual ~ ' ' ~ item.categoria_corresponde) | lower }}">
+      <div class="table__row table__row--mono" data-row="mono" data-razon="{{ item.razon_social | lower }}" data-cuit="{{ item.cuit }}" data-categoria="{{ item.categoria_actual }}" data-corresponde="{{ item.categoria_corresponde }}" data-estado="{{ item.estado_categoria }}" data-search="{{ (item.razon_social ~ ' ' ~ item.cuit ~ ' ' ~ item.categoria_actual ~ ' ' ~ item.categoria_corresponde) | lower }}">
         <span>{{ item.razon_social }}</span>
         <span>{{ item.cuit }}</span>
         <span class="secret-cell">
@@ -242,13 +242,25 @@
     </div>
     {% if detalle %}
     <div class="calculo__layout">
-      <div class="calculo__grid">
-        {% for mes, total in detalle.mensual.items() %}
-        <div class="month-card">
-          <span>{{ mes }}</span>
-          <strong>{{ total }}</strong>
+      <div class="calculo__main">
+        <div class="calculo__grid">
+          {% for mes, total in detalle.mensual.items() %}
+          <div class="month-card">
+            <span>{{ mes }}</span>
+            <strong>{{ total }}</strong>
+          </div>
+          {% endfor %}
         </div>
-        {% endfor %}
+        <div class="calculo__margins">
+          <div class="metric-card">
+            <span>Margen de exclusion</span>
+            <strong>{{ detalle.margen_exclusion }}</strong>
+          </div>
+          <div class="metric-card">
+            <span>Margen de categoria</span>
+            <strong>{{ detalle.margen_categoria }}</strong>
+          </div>
+        </div>
       </div>
       <div class="calculo__side">
         <div class="calculo__summary">
@@ -890,12 +902,14 @@
       }
     });
   };
+  let resetMonoFilters = () => {};
 
   tabs.forEach((tab) => {
     tab.addEventListener("click", () => {
       const target = tab.dataset.tab;
       if (monoPanel && monoPanel.classList.contains("is-active") && target !== "monotributistas") {
         resetMonoPicker();
+        resetMonoFilters();
         const url = new URL(window.location.href);
         if (url.searchParams.has("mono_anchor")) {
           url.searchParams.delete("mono_anchor");
@@ -1021,6 +1035,17 @@
     const searchInput = document.getElementById("monoSearch");
     const categoriaSelect = document.getElementById("monoCategoria");
     const ordenSelect = document.getElementById("monoOrden");
+    const filterButtons = Array.from(document.querySelectorAll("[data-mono-filter]"));
+    let activeMonoFilter = "";
+
+    const setActiveMonoFilter = (value) => {
+      activeMonoFilter = value || "";
+      filterButtons.forEach((button) => {
+        const isActive = button.dataset.monoFilter === activeMonoFilter;
+        button.classList.toggle("is-active", isActive);
+        button.setAttribute("aria-pressed", isActive ? "true" : "false");
+      });
+    };
 
     const applyMonoFilters = () => {
       const query = (searchInput.value || "").toLowerCase().trim();
@@ -1030,7 +1055,8 @@
       let filtered = rows.filter((row) => {
         const matchesQuery = row.dataset.search.includes(query);
         const matchesCategoria = !categoria || row.dataset.categoria === categoria;
-        return matchesQuery && matchesCategoria;
+        const matchesEstado = !activeMonoFilter || row.dataset.estado === activeMonoFilter;
+        return matchesQuery && matchesCategoria && matchesEstado;
       });
 
       const sorters = {
@@ -1058,6 +1084,29 @@
     });
     categoriaSelect.addEventListener("change", applyMonoFilters);
     ordenSelect.addEventListener("change", applyMonoFilters);
+
+    filterButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        const value = button.dataset.monoFilter;
+        const nextValue = activeMonoFilter === value ? "" : value;
+        setActiveMonoFilter(nextValue);
+        if (monoPanel && !monoPanel.classList.contains("is-active")) {
+          const monoTab = document.querySelector(".tab[data-tab='monotributistas']");
+          if (monoTab) {
+            monoTab.click();
+          }
+        }
+        applyMonoFilters();
+      });
+    });
+
+    resetMonoFilters = () => {
+      searchInput.value = "";
+      categoriaSelect.value = "";
+      ordenSelect.value = "razon_asc";
+      setActiveMonoFilter("");
+      applyMonoFilters();
+    };
 
     applyMonoFilters();
   }
