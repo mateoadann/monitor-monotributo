@@ -1,10 +1,13 @@
 .PHONY: help up up-build down down-v logs-web logs-worker shell test test-quiet test-file
+.PHONY: restart-web restart-all
 .PHONY: psql redis rpa migrate-concepto storage-check test-db test-views-clean
 
 help:
 	@echo "Targets disponibles:"
 	@echo "  up                Levanta servicios (sin build)"
 	@echo "  up-build          Levanta servicios con build"
+	@echo "  restart-web       Reinicia solo el servicio web"
+	@echo "  restart-all       Reinicia todos los servicios"
 	@echo "  down              Baja servicios"
 	@echo "  down-v            Baja servicios y borra volumenes"
 	@echo "  logs-web          Logs del contenedor web"
@@ -26,6 +29,12 @@ up:
 
 up-build:
 	docker compose up -d --build
+
+restart-web:
+	docker compose restart web
+
+restart-all:
+	docker compose restart
 
 down:
 	docker compose down
