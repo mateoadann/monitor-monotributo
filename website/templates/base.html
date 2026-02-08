@@ -23,7 +23,7 @@
       {% block header_row_content %}{% endblock %}
       {% if current_user.is_authenticated %}
         <nav class="topbar__actions">
-          <a class="ghost-link" href="{{ url_for('main.dashboard', tab='ayuda') }}">Ayuda</a>
+          <a class="ghost-link tab" data-tab="ayuda" href="{{ url_for('main.dashboard', tab='ayuda') }}">Ayuda</a>
           <a class="primary-link" href="{{ url_for('auth.logout') }}">Salir</a>
         </nav>
       {% endif %}

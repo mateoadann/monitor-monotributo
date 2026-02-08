@@ -359,6 +359,7 @@
     <div class="help-content">
       <nav class="help-nav">
         <a href="#help-monotributo" class="help-nav__link">Que es el Monotributo</a>
+        <a href="#help-manual" class="help-nav__link">Manual de uso</a>
         <a href="#help-categorias" class="help-nav__link">Categorias y topes</a>
         <a href="#help-calculo" class="help-nav__link">Calculo de facturacion</a>
         <a href="#help-prorrateo" class="help-nav__link">Prorrateo</a>
@@ -375,6 +376,20 @@
           <p>Las personas inscriptas en este regimen se denominan <strong>monotributistas</strong> y no tributan IVA como los "Responsables Inscriptos", sino que emiten facturas tipo C o E (exportacion).</p>
           <div class="help-highlight">
             <strong>Importante:</strong> La categoria de monotributo se determina principalmente por el tope de facturacion anual. Si se supera el tope de la categoria actual, corresponde recategorizarse a una categoria superior.
+          </div>
+        </section>
+
+        <section class="help-section" id="help-manual">
+          <h3>Manual de uso</h3>
+          <p>Estos son los pasos recomendados para usar el sistema de forma ordenada:</p>
+          <ol>
+            <li><strong>Alta de monotributista:</strong> En la pestaña "Monotributistas" crea el registro con razon social, CUIT, clave fiscal y categoria actual.</li>
+            <li><strong>Carga de facturas:</strong> En "Facturas" podes cargar manualmente o subir PDFs. Revisá fechas, tipo de comprobante y numero.</li>
+            <li><strong>Revisar calculo:</strong> En "Calculo" selecciona el monotributista y el periodo de corte para ver el total anual y la categoria sugerida.</li>
+            <li><strong>Actualizar topes:</strong> En "Configuracion" defini vigencias y topes por categoria para que los calculos reflejen los valores actuales.</li>
+          </ol>
+          <div class="help-highlight">
+            <strong>Sugerencia:</strong> Si cargas PDFs, el sistema completa la mayor parte de los datos automaticamente. Solo verifica que el numero y las fechas sean correctas.
           </div>
         </section>
 
@@ -905,7 +920,10 @@
   let resetMonoFilters = () => {};
 
   tabs.forEach((tab) => {
-    tab.addEventListener("click", () => {
+    tab.addEventListener("click", (event) => {
+      if (tab.tagName === "A") {
+        event.preventDefault();
+      }
       const target = tab.dataset.tab;
       if (monoPanel && monoPanel.classList.contains("is-active") && target !== "monotributistas") {
         resetMonoPicker();
@@ -917,6 +935,11 @@
           window.location = url.toString();
           return;
         }
+      }
+      const url = new URL(window.location.href);
+      if (url.searchParams.has("tab")) {
+        url.searchParams.delete("tab");
+        window.history.replaceState({}, "", url.toString());
       }
       tabs.forEach((btn) => btn.classList.remove("is-active"));
       panels.forEach((panel) => panel.classList.remove("is-active"));
