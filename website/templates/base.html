@@ -166,9 +166,22 @@
         firstDay: 1,
       };
 
-      const parseDateValue = (value) => {
+      const parseDateValue = (value, format) => {
         if (!value) {
           return null;
+        }
+        if (format === "dd/MM/yyyy") {
+          const parts = value.split("/");
+          if (parts.length !== 3) {
+            return null;
+          }
+          const day = Number(parts[0]);
+          const month = Number(parts[1]);
+          const year = Number(parts[2]);
+          if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) {
+            return null;
+          }
+          return new Date(year, month - 1, day);
         }
         const parts = value.split("-");
         if (parts.length !== 3) {
@@ -183,16 +196,20 @@
         return new Date(year, month - 1, day);
       };
 
-      const formatDateValue = (date) => {
+      const formatDateValue = (date, format) => {
         const year = date.getFullYear();
         const month = String(date.getMonth() + 1).padStart(2, "0");
         const day = String(date.getDate()).padStart(2, "0");
+        if (format === "dd/MM/yyyy") {
+          return `${day}/${month}/${year}`;
+        }
         return `${year}-${month}-${day}`;
       };
 
       const pickerRegistry = [];
+      window.__airPickerRegistry = pickerRegistry;
       document
-        .querySelectorAll("#configuracion input[type='date'], input[type='date'][data-air-picker='true']")
+        .querySelectorAll("#configuracion input[type='date'], input[data-air-picker='true']")
         .forEach((input) => {
         if (input.dataset.airDatepicker === "true") {
           return;
@@ -201,11 +218,19 @@
         input.setAttribute("autocomplete", "off");
         input.setAttribute("inputmode", "none");
         input.readOnly = true;
-        const selectedDate = parseDateValue(input.value);
+        const dateFormat = input.dataset.dateFormat || "yyyy-MM-dd";
+        const selectedDate = parseDateValue(input.value, dateFormat);
+        const hideOtherPickers = () => {
+          pickerRegistry.forEach(({ input: registeredInput, picker: registeredPicker }) => {
+            if (registeredInput !== input) {
+              registeredPicker.hide();
+            }
+          });
+        };
         const picker = new AirDatepicker(input, {
           autoClose: true,
           locale: localeEs,
-          dateFormat: "yyyy-MM-dd",
+          dateFormat,
           selectedDates: selectedDate ? [selectedDate] : [],
           onSelect: ({ date }) => {
             const picked = Array.isArray(date) ? date[0] : date;
@@ -213,39 +238,45 @@
               input.value = "";
               return;
             }
-            input.value = formatDateValue(picked);
+            input.value = formatDateValue(picked, dateFormat);
           },
         });
-        const showPicker = () => picker.show();
-        input.addEventListener("pointerdown", (event) => {
-          event.preventDefault();
-          showPicker();
-        });
+        const showPicker = () => {
+          hideOtherPickers();
+          picker.show();
+        };
         input.addEventListener("focus", showPicker);
-        input.addEventListener("click", (event) => {
-          event.preventDefault();
-          showPicker();
-        });
+        input.addEventListener("click", showPicker);
         input.addEventListener("keydown", (event) => {
           if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
             showPicker();
           }
         });
-        pickerRegistry.push({ input, picker });
+        input._airPicker = picker;
+        pickerRegistry.push({ input, picker, hideOtherPickers });
       });
       if (pickerRegistry.length) {
         const handleOutsideClick = (event) => {
           if (event.target.closest(".air-datepicker")) {
             return;
           }
-          if (event.target.closest("input[type='date'][data-air-datepicker='true']")) {
+          const dateInput = event.target.closest("input[data-air-datepicker='true']");
+          if (dateInput) {
+            pickerRegistry.forEach(({ input, picker }) => {
+              if (input !== dateInput) {
+                picker.hide();
+              }
+            });
             return;
           }
           pickerRegistry.forEach(({ picker }) => picker.hide());
         };
-        document.addEventListener("mousedown", handleOutsideClick);
-        document.addEventListener("touchstart", handleOutsideClick);
+        document.addEventListener("mousedown", handleOutsideClick, true);
+        document.addEventListener("touchstart", handleOutsideClick, true);
+        document.addEventListener("pointerdown", handleOutsideClick, true);
+        document.addEventListener("click", handleOutsideClick, true);
+        document.addEventListener("focusin", handleOutsideClick, true);
       }
     })();
   </script>

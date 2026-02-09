@@ -616,15 +616,19 @@
         </label>
         <label class="field">
           Fecha
-          <input type="date" name="fecha">
+          <input type="text" name="fecha" data-air-picker="true" data-date-format="dd/MM/yyyy" placeholder="dd/mm/aaaa">
         </label>
         <label class="field">
           Tipo de comp
           <select name="tipo_comp">
             <option value="">Seleccionar</option>
-            <option value="C">C</option>
-            <option value="NC">NC</option>
-            <option value="E">E</option>
+            <option value="C">Factura C</option>
+            <option value="NDC">Nota de debito C</option>
+            <option value="NCC">Nota de credito C</option>
+            <option value="RC">Recibo C</option>
+            <option value="E">Factura exterior (E)</option>
+            <option value="NDE">Nota de debito exterior (E)</option>
+            <option value="NCE">Nota de credito exterior (E)</option>
           </select>
         </label>
         <label class="field">
@@ -653,11 +657,11 @@
         </label>
         <label class="field">
           Fecha DESDE
-          <input type="date" name="fecha_desde">
+          <input type="text" name="fecha_desde" data-air-picker="true" data-date-format="dd/MM/yyyy" placeholder="dd/mm/aaaa">
         </label>
         <label class="field">
           Fecha HASTA
-          <input type="date" name="fecha_hasta">
+          <input type="text" name="fecha_hasta" data-air-picker="true" data-date-format="dd/MM/yyyy" placeholder="dd/mm/aaaa">
         </label>
       </div>
       <div class="form-actions">
@@ -725,7 +729,7 @@
             {% set source_label = "-" %}
           {% endif %}
           <div class="table__row table__row--imports">
-            <span>{{ item.created_at.strftime("%d/%m/%Y %H:%M") if item.created_at else "-" }}</span>
+            <span>{{ item.created_at_label or (item.created_at.strftime("%d/%m/%Y %H:%M") if item.created_at else "-") }}</span>
             <span>{{ item.monotributista.razon_social if item.monotributista else "-" }}</span>
             <span>{{ source_label }}</span>
             <span class="status-pill status--{{ status_class }}">{{ status_label }}</span>
@@ -752,15 +756,15 @@
       <h3>Proceso RPA</h3>
       <button class="modal__close" type="button" data-close>&times;</button>
     </div>
-    <form class="panel__form panel__form--rpa">
+    <form class="panel__form panel__form--rpa" method="post" action="{{ url_for('main.run_rpa') }}" data-rpa-form>
       <div class="form-grid">
         <label class="field">
           Fecha desde
-          <input type="text" name="rpa_fecha_desde" placeholder="01/12/2025">
+          <input type="date" name="rpa_fecha_desde" data-air-picker="true" placeholder="2025-12-01" required>
         </label>
         <label class="field">
           Fecha hasta
-          <input type="text" name="rpa_fecha_hasta" placeholder="31/01/2026">
+          <input type="date" name="rpa_fecha_hasta" data-air-picker="true" placeholder="2026-01-31" required>
         </label>
       </div>
       <div class="form-section">
@@ -772,7 +776,7 @@
           </label>
           <label class="choice">
             <input type="radio" name="rpa_group" value="categorias">
-            Por categoria actual
+            Por categoria
           </label>
           <label class="choice">
             <input type="radio" name="rpa_group" value="seleccion">
@@ -780,10 +784,10 @@
           </label>
         </div>
       </div>
-      <div class="form-grid">
-        <div class="form-section">
-          <span class="form-section__title">Categorias</span>
-          <div class="checklist checklist--scroll">
+      <details class="rpa-collapse" data-rpa-section="categorias">
+        <summary>Categorias</summary>
+        <div class="rpa-collapse__body">
+          <div class="checklist checklist--scroll checklist--rpa-grid">
             {% for categoria in categorias %}
             <label class="checklist__item">
               <input type="checkbox" name="rpa_categorias" value="{{ categoria.id }}">
@@ -792,8 +796,10 @@
             {% endfor %}
           </div>
         </div>
-        <div class="form-section">
-          <span class="form-section__title">Monotributistas</span>
+      </details>
+      <details class="rpa-collapse" data-rpa-section="monotributistas">
+        <summary>Monotributistas</summary>
+        <div class="rpa-collapse__body">
           <input class="field__search" type="text" placeholder="Buscar razon social">
           <div class="checklist checklist--scroll">
             {% for item in monotributistas_select %}
@@ -804,43 +810,44 @@
             {% endfor %}
           </div>
         </div>
-      </div>
-      <div class="form-section">
-        <span class="form-section__title">Tipos de comprobante</span>
-        <div class="checklist checklist--grid">
-          <label class="checklist__item">
-            <input type="checkbox" name="rpa_tipos" value="11" checked>
-            11 - Factura C
-          </label>
-          <label class="checklist__item">
-            <input type="checkbox" name="rpa_tipos" value="12" checked>
-            12 - Nota de debito C
-          </label>
-          <label class="checklist__item">
-            <input type="checkbox" name="rpa_tipos" value="13" checked>
-            13 - Nota de credito C
-          </label>
-          <label class="checklist__item">
-            <input type="checkbox" name="rpa_tipos" value="15" checked>
-            15 - Recibo C
-          </label>
-          <label class="checklist__item">
-            <input type="checkbox" name="rpa_tipos" value="19" checked>
-            19 - Factura exterior (E)
-          </label>
-          <label class="checklist__item">
-            <input type="checkbox" name="rpa_tipos" value="20" checked>
-            20 - Nota de debito exterior (E)
-          </label>
-          <label class="checklist__item">
-            <input type="checkbox" name="rpa_tipos" value="21" checked>
-            21 - Nota de credito exterior (E)
-          </label>
+      </details>
+      <details class="rpa-collapse" data-rpa-section="tipos">
+        <summary>Tipos de comprobante</summary>
+        <div class="rpa-collapse__body">
+          <div class="checklist checklist--grid">
+            <label class="checklist__item">
+              <input type="checkbox" name="rpa_tipos" value="11" checked>
+              11 - Factura C
+            </label>
+            <label class="checklist__item">
+              <input type="checkbox" name="rpa_tipos" value="12" checked>
+              12 - Nota de debito C
+            </label>
+            <label class="checklist__item">
+              <input type="checkbox" name="rpa_tipos" value="13" checked>
+              13 - Nota de credito C
+            </label>
+            <label class="checklist__item">
+              <input type="checkbox" name="rpa_tipos" value="15" checked>
+              15 - Recibo C
+            </label>
+            <label class="checklist__item">
+              <input type="checkbox" name="rpa_tipos" value="19" checked>
+              19 - Factura exterior (E)
+            </label>
+            <label class="checklist__item">
+              <input type="checkbox" name="rpa_tipos" value="20" checked>
+              20 - Nota de debito exterior (E)
+            </label>
+            <label class="checklist__item">
+              <input type="checkbox" name="rpa_tipos" value="21" checked>
+              21 - Nota de credito exterior (E)
+            </label>
+          </div>
         </div>
-      </div>
+      </details>
       <div class="form-actions">
-        <p class="form-hint">Integracion pendiente del proceso RPA.</p>
-        <button class="primary" type="button">Iniciar RPA</button>
+        <button class="primary" type="submit" data-rpa-submit>Iniciar RPA</button>
       </div>
     </form>
   </div>
@@ -1433,10 +1440,27 @@
     }
   };
 
+  const resetRpaModal = () => {
+    const rpaModal = document.querySelector("[data-modal='rpa']");
+    if (!rpaModal) {
+      return;
+    }
+    const form = rpaModal.querySelector("form");
+    if (form) {
+      form.reset();
+    }
+  };
+
   const closeModal = (modal) => {
     modal.classList.remove("is-open");
     if (modal.dataset.modal === "factura") {
       resetFacturaModal();
+    }
+    if (modal.dataset.modal === "rpa") {
+      resetRpaModal();
+    }
+    if (window.__airPickerRegistry) {
+      window.__airPickerRegistry.forEach(({ picker }) => picker.hide());
     }
     updateBodyScroll();
     modal.dispatchEvent(new CustomEvent("modal:close"));
@@ -1496,6 +1520,9 @@
   const formatImportDate = (value) => {
     if (!value) {
       return "-";
+    }
+    if (typeof value === "string" && /^\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2}$/.test(value)) {
+      return value;
     }
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) {
@@ -1598,6 +1625,144 @@
   if (importsModal) {
     importsModal.addEventListener("modal:open", startImportsPolling);
     importsModal.addEventListener("modal:close", stopImportsPolling);
+  }
+
+  const rpaForm = document.querySelector("[data-rpa-form]");
+  const showFlash = (message, type) => {
+    if (!message) {
+      return;
+    }
+    let flashStack = document.querySelector(".flash-stack");
+    if (!flashStack) {
+      const mainContent = document.querySelector(".content");
+      flashStack = document.createElement("div");
+      flashStack.className = "flash-stack";
+      if (mainContent) {
+        mainContent.prepend(flashStack);
+      }
+    }
+    const flash = document.createElement("div");
+    flash.className = `flash flash--${type || "success"}`;
+    flash.textContent = message;
+    flashStack.appendChild(flash);
+    const timeout = type === "error" ? 4000 : 2000;
+    const removeDelay = type === "error" ? 4600 : 2600;
+    setTimeout(() => {
+      flash.classList.add("is-hidden");
+    }, timeout);
+    setTimeout(() => {
+      flash.remove();
+    }, removeDelay);
+  };
+
+  if (rpaForm) {
+    const rpaSections = Array.from(document.querySelectorAll("[data-rpa-section]"));
+    const rpaGroupInputs = Array.from(rpaForm.querySelectorAll("input[name='rpa_group']"));
+    const rpaCategoriasInputs = Array.from(rpaForm.querySelectorAll("input[name='rpa_categorias']"));
+    const rpaMonotributistasInputs = Array.from(
+      rpaForm.querySelectorAll("input[name='rpa_monotributistas']")
+    );
+    const setAllChecked = (inputs, checked) => {
+      inputs.forEach((input) => {
+        input.checked = checked;
+      });
+    };
+    const updateRpaSections = () => {
+      const selected = rpaForm.querySelector("input[name='rpa_group']:checked");
+      const value = selected ? selected.value : "all";
+      const showCategorias = value === "categorias" || value === "seleccion";
+      const showMonotributistas = value === "all" || value === "seleccion";
+      const showTipos = value === "seleccion";
+      if (value === "all") {
+        setAllChecked(rpaMonotributistasInputs, true);
+      }
+      if (value === "categorias") {
+        setAllChecked(rpaCategoriasInputs, true);
+      }
+      rpaSections.forEach((section) => {
+        const key = section.dataset.rpaSection;
+        let visible = false;
+        if (key === "categorias") {
+          visible = showCategorias;
+        } else if (key === "monotributistas") {
+          visible = showMonotributistas;
+        } else if (key === "tipos") {
+          visible = showTipos;
+        }
+        section.hidden = !visible;
+        if (section.tagName === "DETAILS") {
+          section.open = false;
+        }
+      });
+    };
+    rpaGroupInputs.forEach((input) => {
+      input.addEventListener("change", updateRpaSections);
+    });
+    updateRpaSections();
+
+    rpaForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const submitButton = rpaForm.querySelector("[data-rpa-submit]");
+      const rpaModal = rpaForm.closest(".modal");
+      const fechaDesdeInput = rpaForm.querySelector("input[name='rpa_fecha_desde']");
+      const fechaHastaInput = rpaForm.querySelector("input[name='rpa_fecha_hasta']");
+      if (submitButton) {
+        submitButton.disabled = true;
+      }
+      let shouldReset = false;
+      const missingFields = [];
+      if (fechaDesdeInput && !fechaDesdeInput.value) {
+        missingFields.push("fecha desde");
+      }
+      if (fechaHastaInput && !fechaHastaInput.value) {
+        missingFields.push("fecha hasta");
+      }
+      if (missingFields.length) {
+        const missingLabel = missingFields.join(" y ");
+        showFlash(`Completa ${missingLabel}.`, "error");
+        if (rpaModal) {
+          closeModal(rpaModal);
+        }
+        if (submitButton) {
+          submitButton.disabled = false;
+        }
+        return;
+      }
+      try {
+        const response = await fetch(rpaForm.action, {
+          method: "POST",
+          body: new FormData(rpaForm),
+          headers: { "X-Requested-With": "XMLHttpRequest" },
+        });
+        let data = {};
+        try {
+          data = await response.json();
+        } catch (error) {
+          data = {};
+        }
+        if (!response.ok) {
+          showFlash(data.error || "No se pudo iniciar el proceso RPA.", "error");
+        } else {
+          const queuedLabel = Number.isFinite(data.queued)
+            ? `RPA en cola para ${data.queued} monotributistas.`
+            : "RPA en cola.";
+          showFlash(queuedLabel, "success");
+          shouldReset = true;
+        }
+      } catch (error) {
+        showFlash("No se pudo iniciar el proceso RPA.", "error");
+      } finally {
+        if (shouldReset) {
+          rpaForm.reset();
+        }
+        if (rpaModal) {
+          closeModal(rpaModal);
+        }
+        if (submitButton) {
+          submitButton.disabled = false;
+        }
+      }
+    });
   }
 </script>
 {% endblock %}
