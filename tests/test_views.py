@@ -85,7 +85,7 @@ def test_create_factura_nc_guarda_importe_negativo(client, app):
         data={
             "monotributista_id": str(monotributista_id),
             "fecha": "2025-03-10",
-            "tipo_comp": "NCB",
+            "tipo_comp": "NCC",
             "punto_venta": "2",
             "nro_comp": "147",
             "importe_total": "1000",

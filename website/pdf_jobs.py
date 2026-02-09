@@ -9,6 +9,8 @@ from website import create_app
 from website.models import Factura, FacturaImport, Monotributista, db
 from website.pdf_extractor import extract_factura_data
 
+CREDIT_NOTE_TYPES = {"NC", "NCC", "NCE"}
+
 
 def build_numero_comp(punto_venta: str | None, numero: str | None) -> str | None:
     if not punto_venta or not numero:
@@ -127,9 +129,7 @@ def process_factura_import(import_id: int) -> None:
                     )
                 importe_total = (usd_total * exchange_rate).quantize(Decimal("0.01"))
 
-            if tipo_comp and tipo_comp.startswith("NC") and isinstance(
-                importe_total, Decimal
-            ):
+            if tipo_comp in CREDIT_NOTE_TYPES and isinstance(importe_total, Decimal):
                 if importe_total > 0:
                     importe_total = -importe_total
 

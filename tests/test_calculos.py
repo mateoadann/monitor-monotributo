@@ -48,7 +48,7 @@ def test_calcular_totales_prorratea_y_descuenta_nc(app):
         factura_prorrateo = Factura(
             monotributista_id=monotributista.id,
             fecha=date(2025, 3, 20),
-            tipo_comp="B",
+            tipo_comp="C",
             numero_comp="0001-00000001",
             importe_total=Decimal("220000.00"),
             fecha_desde=date(2025, 3, 20),
@@ -57,7 +57,7 @@ def test_calcular_totales_prorratea_y_descuenta_nc(app):
         nota_credito = Factura(
             monotributista_id=monotributista.id,
             fecha=date(2025, 4, 5),
-            tipo_comp="NCB",
+            tipo_comp="NCC",
             numero_comp="0001-00000002",
             importe_total=Decimal("1000.00"),
             fecha_desde=date(2025, 4, 5),
