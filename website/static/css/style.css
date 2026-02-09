@@ -423,17 +423,97 @@ button.stat:focus-visible {
   letter-spacing: 0.6px;
 }
 
+.rpa-collapse {
+  border: 1px solid #dfe6f2;
+  border-radius: 12px;
+  background: #f9fbff;
+  overflow: hidden;
+}
+
+.rpa-collapse summary {
+  padding: 12px 16px;
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--navy-90);
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.rpa-collapse summary::-webkit-details-marker {
+  display: none;
+}
+
+.rpa-collapse summary::after {
+  content: "▾";
+  font-size: 14px;
+  color: var(--navy-40);
+  transition: transform 0.2s ease;
+}
+
+.rpa-collapse[open] summary::after {
+  transform: rotate(180deg);
+}
+
+.rpa-collapse__body {
+  padding: 12px 16px 16px;
+  display: grid;
+  gap: 12px;
+}
+
+[data-rpa-section="categorias"] .checklist__item,
+[data-rpa-section="tipos"] .checklist__item {
+  border: 1px solid #d8dce6;
+  border-radius: 10px;
+  padding: 8px 12px;
+  width: 100%;
+  cursor: pointer;
+  background: #fff;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+[data-rpa-section="categorias"] .checklist__item:hover,
+[data-rpa-section="tipos"] .checklist__item:hover {
+  border-color: #b9c6dd;
+  background: #f3f6fb;
+}
+
+[data-rpa-section="categorias"] .checklist__item input[type="checkbox"],
+[data-rpa-section="tipos"] .checklist__item input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+}
+
 .choice-group {
   display: grid;
-  gap: 8px;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .choice {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   font-size: 13px;
   color: var(--navy-40);
+  border: 1px solid #d8dce6;
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: #fff;
+  cursor: pointer;
+  width: 100%;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.choice:hover {
+  border-color: #b9c6dd;
+  background: #f3f6fb;
+}
+
+.choice input[type="radio"] {
+  width: 18px;
+  height: 18px;
 }
 
 .checklist {
@@ -452,6 +532,10 @@ button.stat:focus-visible {
 
 .checklist--grid {
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.checklist--rpa-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .checklist__item {
