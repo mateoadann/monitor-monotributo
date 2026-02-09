@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from decimal import Decimal, InvalidOperation
 import os
 import uuid
@@ -23,6 +24,7 @@ from website.models import (
 )
 from website.pdf_jobs import cleanup_pdf_path, handle_import_failure, process_factura_import
 from website.queue import get_queue
+from website.rpa_jobs import run_rpa_chain
 
 main_bp = Blueprint("main", __name__)
 
@@ -42,6 +44,8 @@ MONTH_LABELS = [
 ]
 
 CATEGORY_CODES = [chr(code) for code in range(ord("A"), ord("K") + 1)]
+RPA_TIPOS_DEFAULT = ["11", "12", "13", "15", "19", "20", "21"]
+CREDIT_NOTE_TYPES = {"NC", "NCC", "NCE"}
 
 
 def parse_date(value: str | None):
@@ -65,6 +69,16 @@ def parse_decimal(value: str | None):
         return Decimal(cleaned)
     except InvalidOperation:
         return None
+
+
+def format_datetime_ar(value: datetime | None) -> str:
+    if not value:
+        return ""
+    argentina_tz = ZoneInfo("America/Argentina/Cordoba")
+    try:
+        return value.astimezone(argentina_tz).strftime("%d/%m/%Y %H:%M")
+    except Exception:
+        return value.strftime("%d/%m/%Y %H:%M")
 
 
 def split_numero_comp(value: str | None) -> tuple[str, str]:
@@ -235,11 +249,8 @@ def calcular_totales(monotributista: Monotributista, anchor: date):
     facturas = Factura.query.filter_by(monotributista_id=monotributista.id).all()
     for factura in facturas:
         importe_total = factura.importe_total
-        if (
-            factura.tipo_comp
-            and factura.tipo_comp.upper().startswith("NC")
-            and importe_total > 0
-        ):
+        tipo_comp = factura.tipo_comp.upper() if factura.tipo_comp else ""
+        if tipo_comp in CREDIT_NOTE_TYPES and importe_total > 0:
             importe_total = -importe_total
 
         start = factura.fecha_desde or factura.fecha_hasta or factura.fecha
@@ -480,6 +491,8 @@ def dashboard():
             FacturaImport.query.order_by(FacturaImport.created_at.desc())
             .all()
         )
+        for item in factura_import_logs:
+            item.created_at_label = format_datetime_ar(item.created_at)
 
     return render_template(
         "dashboard.html",
@@ -789,7 +802,7 @@ def create_factura():
         session["open_modal"] = "factura-imports"
         return redirect(url_for("main.dashboard", tab="facturas"))
 
-    if tipo_comp.upper().startswith("NC") and importe_total > 0:
+    if tipo_comp in CREDIT_NOTE_TYPES and importe_total > 0:
         importe_total = -importe_total
 
     if (punto_venta and not punto_venta.isdigit()) or not nro_comp.isdigit():
@@ -898,7 +911,7 @@ def edit_factura(factura_id):
         ):
             flash("Completa los campos requeridos para editar la factura.", "error")
         else:
-            if tipo_comp.upper().startswith("NC") and importe_total > 0:
+            if tipo_comp in CREDIT_NOTE_TYPES and importe_total > 0:
                 importe_total = -importe_total
             if (punto_venta and not punto_venta.isdigit()) or not nro_comp.isdigit():
                 flash(
@@ -983,9 +996,10 @@ def factura_imports():
     )
     payload = []
     for item in logs:
+        created_at_label = format_datetime_ar(item.created_at)
         payload.append(
             {
-                "created_at": item.created_at.isoformat() if item.created_at else "",
+                "created_at": created_at_label,
                 "monotributista": item.monotributista.razon_social if item.monotributista else "-",
                 "source": item.source or "-",
                 "status": item.status or "-",
@@ -1117,3 +1131,71 @@ def delete_vigencia(vigencia_id):
     db.session.commit()
     flash("Vigencia eliminada.", "success")
     return redirect(url_for("main.dashboard", tab="configuracion"))
+
+
+@main_bp.post("/rpa/run")
+@login_required
+def run_rpa():
+    fecha_desde_raw = request.form.get("rpa_fecha_desde", "").strip()
+    fecha_hasta_raw = request.form.get("rpa_fecha_hasta", "").strip()
+    group = request.form.get("rpa_group", "all")
+    categorias_raw = request.form.getlist("rpa_categorias")
+    monotributistas_raw = request.form.getlist("rpa_monotributistas")
+    tipos = [item for item in request.form.getlist("rpa_tipos") if item]
+
+    categorias = [int(item) for item in categorias_raw if item.isdigit()]
+    seleccionados = [int(item) for item in monotributistas_raw if item.isdigit()]
+
+    missing = []
+    if not fecha_desde_raw:
+        missing.append("fecha desde")
+    if not fecha_hasta_raw:
+        missing.append("fecha hasta")
+    if missing:
+        missing_label = " y ".join(missing)
+        return jsonify({"error": f"Completa {missing_label}."}), 400
+
+    def format_rpa_date(value: str) -> str | None:
+        if not value:
+            return None
+        parsed = parse_date(value)
+        if parsed:
+            return parsed.strftime("%d/%m/%Y")
+        return None
+
+    fecha_desde = format_rpa_date(fecha_desde_raw)
+    fecha_hasta = format_rpa_date(fecha_hasta_raw)
+    if not fecha_desde or not fecha_hasta:
+        return jsonify({"error": "Completa las fechas con un formato valido."}), 400
+
+    seleccionar_tipo = False
+    if tipos and set(tipos) != set(RPA_TIPOS_DEFAULT):
+        seleccionar_tipo = True
+    elif not tipos:
+        tipos = RPA_TIPOS_DEFAULT
+
+    query = Monotributista.query
+    if group == "categorias":
+        if not categorias:
+            return jsonify({"error": "Selecciona al menos una categoria."}), 400
+        query = query.filter(Monotributista.categoria_actual_id.in_(categorias))
+    elif group == "seleccion":
+        if not seleccionados:
+            return jsonify({"error": "Selecciona al menos un monotributista."}), 400
+        query = query.filter(Monotributista.id.in_(seleccionados))
+
+    monotributistas = query.order_by(Monotributista.razon_social).all()
+    if not monotributistas:
+        return jsonify({"error": "No hay monotributistas para procesar."}), 400
+
+    ids = [item.id for item in monotributistas]
+    queue = get_queue()
+    queue.enqueue(
+        run_rpa_chain,
+        ids,
+        fecha_desde,
+        fecha_hasta,
+        tipos if seleccionar_tipo else None,
+        seleccionar_tipo,
+    )
+    return jsonify({"queued": len(ids)})
