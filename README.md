@@ -13,6 +13,7 @@ Este proyecto resuelve el seguimiento del tope anual de facturacion para monotri
 - Calculo de facturacion mensual y total anual con prorrateo.
 - CRUD de categorias con topes.
 - Dashboard con filtros, estados y resalta si sube, mantiene o baja categoria.
+- Proceso RPA para descargar comprobantes desde ARCA.
 
 ## Stack
 - Backend: Python + Flask + SQLAlchemy
@@ -20,12 +21,19 @@ Este proyecto resuelve el seguimiento del tope anual de facturacion para monotri
 - Base de datos: PostgreSQL
 - Cola de procesamiento: Redis + RQ
 - Contenedores: Docker Compose
+- RPA: Playwright (Chromium)
 
 ## Ejecutar con Docker
 Requisitos: Docker y Docker Compose.
 
 ```bash
-docker compose up --build
+make up-build
+```
+
+Para ver todos los comandos disponibles:
+
+```bash
+make help
 ```
 
 Luego abrir:
@@ -35,6 +43,13 @@ http://localhost:5001
 
 ## Variables de entorno
 Opcionalmente podés crear un `.env` basado en `.env.example` para configurar base de datos, Redis, uploads y secret.
+
+## Proceso RPA
+El modal "Procesar RPA" encola un job por monotributista y los procesa en secuencia (RPA1 -> PDFs1 -> RPA2). El worker ejecuta el navegador en modo headless.
+
+Notas importantes:
+- Si la clave fiscal es incorrecta se registra un error en "Ver importaciones" con el mensaje "CUIT/CUIL Clave o usuario incorrecto".
+- La fecha y hora en "Ver importaciones" se muestra en la zona America/Argentina/Cordoba (GMT-3).
 
 ## Usuario demo
 - Usuario: admin

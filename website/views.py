@@ -1175,7 +1175,11 @@ def run_rpa():
         tipos = RPA_TIPOS_DEFAULT
 
     query = Monotributista.query
-    if group == "categorias":
+    if group == "all":
+        if not seleccionados:
+            return jsonify({"error": "Selecciona al menos un monotributista."}), 400
+        query = query.filter(Monotributista.id.in_(seleccionados))
+    elif group == "categorias":
         if not categorias:
             return jsonify({"error": "Selecciona al menos una categoria."}), 400
         query = query.filter(Monotributista.categoria_actual_id.in_(categorias))

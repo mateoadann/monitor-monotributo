@@ -20,7 +20,7 @@ Caso con rangos que cruzan meses:
 - Si "Fecha Desde" y "Fecha Hasta" abarcan más de un mes, el importe debe prorratearse por días y asignarse a cada mes correspondiente.
 
 ## Componentes del sistema
-1) Proceso RPA: usa Playwright para ingresar a ARCA con usuario y contraseña y descargar documentos (facturas y notas de crédito).
+1) Proceso RPA: usa Playwright para ingresar a ARCA con usuario y contraseña y descargar documentos (facturas y notas de crédito). Se encola 1 job por monotributista y se procesa en forma secuencial (RPA1 -> PDFs1 -> RPA2) para evitar fallos en lote.
 2) Análisis de PDFs: extracción de datos y cálculo de métricas según los campos detectados.
 3) Dashboard: UI para gestionar monotributistas, límites por categoría, usuarios y consultas.
 
@@ -64,7 +64,7 @@ Listado de monotributistas con:
 Listado de datos extraídos de facturas y notas de crédito:
 - Facturador: monotributista asociado.
 - Fecha: formato DD/MM/AAAA.
-- Tipo de comp.: "B" para factura B, "NCB" para nota de crédito B.
+- Tipo de comp.: "C", "E", "NCC", "NCE", "NDC", "NDE", "RC".
 - Número de comp.: formato "0002-00000147" (punto de venta + número).
 - CUIT receptor.
 - Razón social receptor.
@@ -77,7 +77,7 @@ Listado de datos extraídos de facturas y notas de crédito:
 - Se listan facturas y notas de crédito con todos los campos requeridos.
 - El formato de fecha es DD/MM/AAAA y el número de comprobante respeta el formato "0002-00000147".
 - El importe total se muestra con `.` como separador de miles y `,` como decimal.
-- Las notas de crédito se identifican con "NCB" y afectan el cálculo como valores negativos.
+- Las notas de crédito se identifican con "NCC" o "NCE" y afectan el cálculo como valores negativos.
 
 ### 3) Cálculo
 Tabla interactiva para:
@@ -115,8 +115,9 @@ CRUD de categorías y otras funcionalidades futuras.
    - Se consideran los últimos 12 meses completos hacia atrás desde la fecha de referencia.
    - Ejemplo: si la fecha de referencia es 31/12/2025, se considera del 01/01/2025 al 31/12/2025.
 2) Suma de comprobantes
-   - Facturas suman al total anual.
-   - Notas de crédito restan al total anual.
+   - Facturas (C/E) suman al total anual.
+   - Notas de crédito (NCC/NCE) restan al total anual.
+   - Notas de débito (NDC/NDE) y Recibo (RC) suman.
 3) Prorrateo por rango de fechas
    - Si "Fecha Desde" y "Fecha Hasta" están dentro del mismo mes, el importe se asigna completo a ese mes.
    - Si el rango abarca más de un mes, el importe total se divide por la cantidad de días del rango (incluyendo ambos extremos).
@@ -163,7 +164,7 @@ CRUD de categorías y otras funcionalidades futuras.
 
 ### Levantar el proyecto
 - Construir y levantar:
-  - `docker compose up --build`
+  - `make up-build`
 - Acceso:
   - `http://localhost:5000`
 

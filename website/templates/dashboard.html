@@ -1448,10 +1448,18 @@
     const form = rpaModal.querySelector("form");
     if (form) {
       form.reset();
+      const selectedGroup = form.querySelector("input[name='rpa_group']:checked");
+      if (selectedGroup) {
+        selectedGroup.dispatchEvent(new Event("change", { bubbles: true }));
+      }
     }
   };
 
   const closeModal = (modal) => {
+    if (!modal) {
+      updateBodyScroll();
+      return;
+    }
     modal.classList.remove("is-open");
     if (modal.dataset.modal === "factura") {
       resetFacturaModal();
@@ -1460,7 +1468,13 @@
       resetRpaModal();
     }
     if (window.__airPickerRegistry) {
-      window.__airPickerRegistry.forEach(({ picker }) => picker.hide());
+      window.__airPickerRegistry.forEach(({ picker }) => {
+        try {
+          picker.hide();
+        } catch (error) {
+          // ignore picker cleanup errors
+        }
+      });
     }
     updateBodyScroll();
     modal.dispatchEvent(new CustomEvent("modal:close"));
