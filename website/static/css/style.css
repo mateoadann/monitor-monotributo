@@ -336,6 +336,34 @@ button.stat:focus-visible {
   margin-bottom: 14px;
 }
 
+.table-tools:not(.table-tools--mono) > .field {
+  flex: 1 1 220px;
+  min-width: 200px;
+  max-width: 320px;
+}
+
+.table-tools:not(.table-tools--mono) > .field > input,
+.table-tools:not(.table-tools--mono) > .field > select,
+.table-tools:not(.table-tools--mono) > .field .filter-select,
+.table-tools:not(.table-tools--mono) > .field .filter-select__trigger {
+  width: 100%;
+  min-width: 0;
+}
+
+.facturas__toolbar {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  margin-bottom: 16px;
+}
+
+.panel__actions--inline {
+  margin-bottom: 0;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .table-tools--mono {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -374,6 +402,8 @@ button.stat:focus-visible {
 
 .pagination--top {
   margin-left: auto;
+  flex: 0 0 auto;
+  align-self: flex-end;
 }
 
 .pagination--bottom {
@@ -576,6 +606,91 @@ button.stat:focus-visible {
   border-radius: 12px;
   padding: 8px 12px;
   font-family: inherit;
+}
+
+.filter-select {
+  position: relative;
+  min-width: 220px;
+}
+
+.filter-select__trigger {
+  width: 100%;
+  border: 1px solid #d8dce6;
+  border-radius: 12px;
+  padding: 9px 12px;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--navy-90);
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.filter-select__trigger::after {
+  content: "▾";
+  font-size: 13px;
+  color: var(--navy-40);
+  flex-shrink: 0;
+}
+
+.filter-select__trigger[aria-expanded="true"]::after {
+  transform: rotate(180deg);
+}
+
+.filter-select__panel {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 6px);
+  left: 0;
+  width: min(360px, 90vw);
+  background: #fff;
+  border: 1px solid #d8dce6;
+  border-radius: 12px;
+  box-shadow: 0 12px 24px rgba(17, 24, 39, 0.12);
+  padding: 10px;
+  display: grid;
+  gap: 10px;
+}
+
+.filter-select__panel[hidden] {
+  display: none;
+}
+
+.filter-select__tools {
+  display: grid;
+  gap: 8px;
+}
+
+.filter-select__search {
+  width: 100%;
+}
+
+.filter-select__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.filter-select__action {
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.filter-select__panel .checklist {
+  margin: 0;
+}
+
+.selector--calculo {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.field--calculo-select {
+  min-width: 280px;
 }
 
 .field input[type="file"] {
@@ -924,6 +1039,14 @@ input[type="date"][data-air-picker="true"]::-webkit-calendar-picker-indicator {
   padding: 12px 18px;
   border: 1px solid #d6d6e4;
   font-family: inherit;
+  font-size: 15px;
+  min-width: 220px;
+}
+
+.selector .filter-select__trigger {
+  border-radius: 999px;
+  padding: 12px 18px;
+  border-color: #d6d6e4;
   font-size: 15px;
   min-width: 220px;
 }
@@ -1648,6 +1771,34 @@ input[type="date"][data-air-picker="true"]::-webkit-calendar-picker-indicator {
   .panel__header {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .facturas__toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .facturas__toolbar .pagination--top {
+    margin-left: 0;
+    align-self: flex-start;
+  }
+
+  .selector--calculo {
+    width: 100%;
+  }
+
+  .field--calculo-select {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .filter-select {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .filter-select__panel {
+    width: 100%;
   }
 
   .form-actions {

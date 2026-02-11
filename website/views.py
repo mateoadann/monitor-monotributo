@@ -459,6 +459,7 @@ def dashboard():
     facturas = [
         {
             "id": item.id,
+            "facturador_id": item.monotributista_id,
             "facturador": item.monotributista.razon_social if item.monotributista else "-",
             "fecha": format_date(item.fecha),
             "fecha_iso": item.fecha.isoformat(),
@@ -509,6 +510,7 @@ def dashboard():
         ],
         monotributistas_select=monotributistas_raw,
         seleccionado_id=seleccionado.id if seleccionado else None,
+        seleccionado_label=seleccionado.razon_social if seleccionado else "",
         detalle=detalle,
         active_tab=active_tab,
         anchor_value=anchor_value,

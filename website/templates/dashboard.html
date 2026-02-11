@@ -130,15 +130,31 @@
         Buscar
         <input type="text" id="facturaSearch" placeholder="Buscar por CUIT, razon, comp...">
       </label>
-      <label class="field field--inline">
-        Facturador
-        <select id="facturaFacturador">
-          <option value="">Todos</option>
-          {% for item in monotributistas_select %}
-            <option value="{{ item.razon_social }}">{{ item.razon_social }}</option>
-          {% endfor %}
-        </select>
-      </label>
+      <div class="field field--inline">
+        <span>Facturador</span>
+        <div class="filter-select" data-search-select="facturas" data-multiple="true" data-placeholder="Todos">
+          <button class="filter-select__trigger" type="button" data-select-trigger aria-expanded="false">
+            <span data-select-label>Todos</span>
+          </button>
+          <div class="filter-select__panel" data-select-panel hidden>
+            <div class="filter-select__tools">
+              <input class="field__search filter-select__search" type="text" data-select-search placeholder="Buscar facturador">
+              <div class="filter-select__actions">
+                <button class="ghost-button filter-select__action" type="button" data-select-action="all">Todos</button>
+                <button class="ghost-button filter-select__action" type="button" data-select-action="clear">Limpiar</button>
+              </div>
+            </div>
+            <div class="checklist checklist--scroll" data-select-list>
+              {% for item in monotributistas_select %}
+              <label class="checklist__item" data-select-option data-search="{{ item.razon_social | lower }}" data-label="{{ item.razon_social }}">
+                <input type="checkbox" value="{{ item.id }}" data-select-input>
+                {{ item.razon_social }}
+              </label>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
       <label class="field field--inline">
         Tipo
         <select id="facturaTipo">
@@ -157,16 +173,18 @@
           <option value="importe_asc">Importe: menor</option>
         </select>
       </label>
+    </div>
+    <div class="facturas__toolbar">
+      <div class="panel__actions panel__actions--inline">
+        <button class="primary" type="button" data-open="factura">Cargar factura</button>
+        <button class="ghost-button" type="button" data-open="factura-imports">Ver importaciones</button>
+        <button class="ghost-button" type="button" data-open="rpa">Procesar RPA</button>
+      </div>
       <div class="pagination pagination--top" data-pagination="facturas-top">
         <button class="ghost-button" type="button" data-page="prev">Anterior</button>
         <span class="pagination__info" data-page-info>Pagina 1 de 1</span>
         <button class="ghost-button" type="button" data-page="next">Siguiente</button>
       </div>
-    </div>
-    <div class="panel__actions">
-      <button class="primary" type="button" data-open="factura">Cargar factura</button>
-      <button class="ghost-button" type="button" data-open="factura-imports">Ver importaciones</button>
-      <button class="ghost-button" type="button" data-open="rpa">Procesar RPA</button>
     </div>
     <div class="table table--dense">
       <div class="table__row table__head table__row--facturas">
@@ -183,7 +201,7 @@
         <span>Acciones</span>
       </div>
       {% for item in facturas %}
-      <div class="table__row table__row--facturas is-clickable" role="button" tabindex="0" data-row="factura" data-tipo="{{ item.tipo }}" data-fecha="{{ item.fecha_iso }}" data-fecha-label="{{ item.fecha }}" data-importe="{{ item.importe_raw }}" data-importe-label="{{ item.importe }}" data-facturador="{{ item.facturador }}" data-numero="{{ item.numero }}" data-cuit-receptor="{{ item.cuit_receptor }}" data-razon-receptor="{{ item.razon_receptor }}" data-desde="{{ item.desde }}" data-hasta="{{ item.hasta }}" data-concepto="{{ item.concepto }}" data-search="{{ (item.facturador ~ ' ' ~ item.fecha ~ ' ' ~ item.tipo ~ ' ' ~ item.numero ~ ' ' ~ item.cuit_receptor ~ ' ' ~ item.razon_receptor ~ ' ' ~ item.importe ~ ' ' ~ item.desde ~ ' ' ~ item.hasta ~ ' ' ~ item.concepto) | lower }}">
+      <div class="table__row table__row--facturas is-clickable" role="button" tabindex="0" data-row="factura" data-tipo="{{ item.tipo }}" data-fecha="{{ item.fecha_iso }}" data-fecha-label="{{ item.fecha }}" data-importe="{{ item.importe_raw }}" data-importe-label="{{ item.importe }}" data-facturador="{{ item.facturador }}" data-facturador-id="{{ item.facturador_id or '' }}" data-numero="{{ item.numero }}" data-cuit-receptor="{{ item.cuit_receptor }}" data-razon-receptor="{{ item.razon_receptor }}" data-desde="{{ item.desde }}" data-hasta="{{ item.hasta }}" data-concepto="{{ item.concepto }}" data-search="{{ (item.facturador ~ ' ' ~ item.fecha ~ ' ' ~ item.tipo ~ ' ' ~ item.numero ~ ' ' ~ item.cuit_receptor ~ ' ' ~ item.razon_receptor ~ ' ' ~ item.importe ~ ' ' ~ item.desde ~ ' ' ~ item.hasta ~ ' ' ~ item.concepto) | lower }}">
         <span>{{ item.facturador }}</span>
         <span>{{ item.fecha }}</span>
         <span>{{ item.tipo }}</span>
@@ -230,14 +248,37 @@
         <h2>Calculo de facturacion anual</h2>
         <p>Selecciona un monotributista para ver el detalle mensual.</p>
       </div>
-      <form class="selector" method="get">
+      <form class="selector selector--calculo" method="get">
         <input type="hidden" name="tab" value="calculo">
         <input type="hidden" name="anchor" value="{{ anchor_value }}">
-        <select name="monotributista" onchange="this.form.submit()">
-          {% for item in monotributistas_select %}
-            <option value="{{ item.id }}" {% if item.id == seleccionado_id %}selected{% endif %}>{{ item.razon_social }}</option>
-          {% endfor %}
-        </select>
+        <input type="hidden" name="monotributista" value="{{ seleccionado_id or '' }}">
+        <div class="field field--inline field--calculo-select">
+          <span>Facturador</span>
+          <div class="filter-select" data-search-select="calculo" data-multiple="false" data-placeholder="Seleccionar facturador">
+            <button class="filter-select__trigger" type="button" data-select-trigger aria-expanded="false">
+              <span data-select-label>
+                {% if seleccionado_label %}
+                  {{ seleccionado_label }}
+                {% else %}
+                  Seleccionar facturador
+                {% endif %}
+              </span>
+            </button>
+            <div class="filter-select__panel" data-select-panel hidden>
+              <div class="filter-select__tools">
+                <input class="field__search filter-select__search" type="text" data-select-search placeholder="Buscar facturador">
+              </div>
+              <div class="checklist checklist--scroll" data-select-list>
+                {% for item in monotributistas_select %}
+                <label class="checklist__item" data-select-option data-search="{{ item.razon_social | lower }}" data-label="{{ item.razon_social }}">
+                  <input type="checkbox" value="{{ item.id }}" data-select-input {% if item.id == seleccionado_id %}checked{% endif %}>
+                  {{ item.razon_social }}
+                </label>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+        </div>
       </form>
     </div>
     {% if detalle %}
@@ -1058,6 +1099,267 @@
     updateFileState();
   }
 
+  const searchableSelectRegistry = [];
+  const closeAllSearchableSelects = (except = null) => {
+    searchableSelectRegistry.forEach((selectApi) => {
+      if (selectApi !== except) {
+        selectApi.close();
+      }
+    });
+  };
+
+  const initSearchableSelect = (container, config = {}) => {
+    if (!container) {
+      return null;
+    }
+
+    const trigger = container.querySelector("[data-select-trigger]");
+    const panel = container.querySelector("[data-select-panel]");
+    const searchInput = container.querySelector("[data-select-search]");
+    const optionItems = Array.from(container.querySelectorAll("[data-select-option]"));
+    const optionInputs = optionItems
+      .map((option) => option.querySelector("[data-select-input]"))
+      .filter(Boolean);
+    const multiple =
+      typeof config.multiple === "boolean"
+        ? config.multiple
+        : container.dataset.multiple === "true";
+    const placeholder = config.placeholder || container.dataset.placeholder || "Seleccionar";
+    const labelNode = container.querySelector("[data-select-label]");
+    const actionAll = container.querySelector("[data-select-action='all']");
+    const actionClear = container.querySelector("[data-select-action='clear']");
+
+    const getOptionLabel = (option) => {
+      const explicit = option.dataset.label;
+      if (explicit) {
+        return explicit;
+      }
+      return option.textContent.replace(/\s+/g, " ").trim();
+    };
+
+    const getSelected = () => {
+      return optionInputs
+        .filter((input) => input.checked)
+        .map((input) => {
+          const option = input.closest("[data-select-option]");
+          return {
+            value: input.value,
+            label: option ? getOptionLabel(option) : input.value,
+          };
+        });
+    };
+
+    const updateLabel = () => {
+      if (!labelNode) {
+        return;
+      }
+      const selected = getSelected();
+      const labels = selected.map((item) => item.label);
+      if (!labels.length) {
+        labelNode.textContent = placeholder;
+        return;
+      }
+      if (!multiple) {
+        labelNode.textContent = labels[0];
+        return;
+      }
+      if (labels.length === 1) {
+        labelNode.textContent = labels[0];
+        return;
+      }
+      if (labels.length === 2) {
+        labelNode.textContent = `${labels[0]}, ${labels[1]}`;
+        return;
+      }
+      labelNode.textContent = `${labels.length} seleccionados`;
+    };
+
+    const emitSelectionChange = () => {
+      const selected = getSelected();
+      container.dispatchEvent(
+        new CustomEvent("search-select:change", {
+          detail: {
+            values: selected.map((item) => item.value),
+            labels: selected.map((item) => item.label),
+          },
+        })
+      );
+    };
+
+    const applySearch = () => {
+      const query = (searchInput?.value || "").toLowerCase().trim();
+      optionItems.forEach((option) => {
+        const searchValue = (option.dataset.search || getOptionLabel(option)).toLowerCase();
+        option.hidden = query ? !searchValue.includes(query) : false;
+      });
+    };
+
+    const close = () => {
+      if (panel) {
+        panel.hidden = true;
+      }
+      if (trigger) {
+        trigger.setAttribute("aria-expanded", "false");
+      }
+    };
+
+    const open = () => {
+      closeAllSearchableSelects(selectApi);
+      if (panel) {
+        panel.hidden = false;
+      }
+      if (trigger) {
+        trigger.setAttribute("aria-expanded", "true");
+      }
+      if (searchInput) {
+        searchInput.focus();
+      }
+    };
+
+    const toggle = () => {
+      if (!panel) {
+        return;
+      }
+      if (panel.hidden) {
+        open();
+      } else {
+        close();
+      }
+    };
+
+    const setValues = (values, { silent = false } = {}) => {
+      const allowed = new Set((values || []).map((value) => String(value)));
+      if (multiple) {
+        optionInputs.forEach((input) => {
+          input.checked = allowed.has(String(input.value));
+        });
+      } else {
+        const selectedInput = optionInputs.find((input) => allowed.has(String(input.value)));
+        optionInputs.forEach((input) => {
+          input.checked = Boolean(selectedInput) && input === selectedInput;
+        });
+      }
+      updateLabel();
+      if (!silent) {
+        emitSelectionChange();
+      }
+    };
+
+    const getValues = () => getSelected().map((item) => item.value);
+
+    if (trigger) {
+      trigger.addEventListener("click", toggle);
+    }
+
+    if (searchInput) {
+      searchInput.addEventListener("input", applySearch);
+    }
+
+    optionInputs.forEach((input) => {
+      if (multiple) {
+        input.addEventListener("change", () => {
+          updateLabel();
+          emitSelectionChange();
+        });
+        return;
+      }
+
+      const option = input.closest("[data-select-option]");
+      if (option) {
+        option.addEventListener("click", (event) => {
+          event.preventDefault();
+          optionInputs.forEach((other) => {
+            other.checked = other === input;
+          });
+          updateLabel();
+          emitSelectionChange();
+          close();
+        });
+      }
+    });
+
+    if (actionAll) {
+      actionAll.addEventListener("click", () => {
+        if (!multiple) {
+          return;
+        }
+        optionInputs.forEach((input) => {
+          input.checked = true;
+        });
+        updateLabel();
+        emitSelectionChange();
+      });
+    }
+
+    if (actionClear) {
+      actionClear.addEventListener("click", () => {
+        optionInputs.forEach((input) => {
+          input.checked = false;
+        });
+        updateLabel();
+        emitSelectionChange();
+      });
+    }
+
+    const selectApi = {
+      container,
+      close,
+      open,
+      setValues,
+      getValues,
+    };
+
+    searchableSelectRegistry.push(selectApi);
+
+    if (!window.__searchableSelectListenersBound) {
+      window.__searchableSelectListenersBound = true;
+      document.addEventListener("click", (event) => {
+        searchableSelectRegistry.forEach((api) => {
+          if (!api.container.contains(event.target)) {
+            api.close();
+          }
+        });
+      });
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+          closeAllSearchableSelects();
+        }
+      });
+    }
+
+    applySearch();
+    updateLabel();
+    return selectApi;
+  };
+
+  const calculoSelect = document.querySelector("[data-search-select='calculo']");
+  if (calculoSelect) {
+    const calculoForm = calculoSelect.closest("form");
+    const calculoHiddenInput = calculoForm
+      ? calculoForm.querySelector("input[name='monotributista']")
+      : null;
+    const calculoApi = initSearchableSelect(calculoSelect, {
+      multiple: false,
+      placeholder: "Seleccionar facturador",
+    });
+    if (calculoApi && calculoHiddenInput) {
+      if (calculoHiddenInput.value) {
+        calculoApi.setValues([calculoHiddenInput.value], { silent: true });
+      }
+      calculoSelect.addEventListener("search-select:change", (event) => {
+        const values = event.detail && Array.isArray(event.detail.values)
+          ? event.detail.values
+          : [];
+        const nextValue = values[0] || "";
+        if (!nextValue || nextValue === calculoHiddenInput.value) {
+          return;
+        }
+        calculoHiddenInput.value = nextValue;
+        calculoForm.submit();
+      });
+    }
+  }
+
   const monoTable = document.querySelector("#monotributistas .table");
   if (monoTable) {
     const headerRow = monoTable.querySelector(".table__head");
@@ -1147,12 +1449,16 @@
     const rows = Array.from(facturaTable.querySelectorAll("[data-row='factura']"));
     const searchInput = document.getElementById("facturaSearch");
     const tipoSelect = document.getElementById("facturaTipo");
-    const facturadorSelect = document.getElementById("facturaFacturador");
+    const facturadorSelect = document.querySelector("[data-search-select='facturas']");
     const ordenSelect = document.getElementById("facturaOrden");
     const paginationTop = document.querySelector("[data-pagination='facturas-top']");
     const paginationBottom = document.querySelector("[data-pagination='facturas-bottom']");
     const pageSize = 10;
     let currentPage = 1;
+    const facturadorSelectApi = initSearchableSelect(facturadorSelect, {
+      multiple: true,
+      placeholder: "Todos",
+    });
 
     const updatePaginationButtons = (totalPages) => {
       [paginationTop, paginationBottom].forEach((container) => {
@@ -1198,13 +1504,16 @@
     const applyFilters = (resetPage = false) => {
       const query = (searchInput.value || "").toLowerCase().trim();
       const tipo = tipoSelect.value;
-      const facturador = facturadorSelect.value;
+      const facturadores = new Set(
+        facturadorSelectApi ? facturadorSelectApi.getValues() : []
+      );
       const orden = ordenSelect.value;
 
       let filtered = rows.filter((row) => {
         const matchesQuery = row.dataset.search.includes(query);
         const matchesTipo = !tipo || row.dataset.tipo === tipo;
-        const matchesFacturador = !facturador || row.dataset.facturador === facturador;
+        const matchesFacturador =
+          !facturadores.size || facturadores.has(String(row.dataset.facturadorId || ""));
         return matchesQuery && matchesTipo && matchesFacturador;
       });
 
@@ -1226,7 +1535,9 @@
       searchInput.addEventListener(eventName, () => applyFilters(true));
     });
     tipoSelect.addEventListener("change", () => applyFilters(true));
-    facturadorSelect.addEventListener("change", () => applyFilters(true));
+    if (facturadorSelect) {
+      facturadorSelect.addEventListener("search-select:change", () => applyFilters(true));
+    }
     ordenSelect.addEventListener("change", () => applyFilters(true));
 
     [paginationTop, paginationBottom].forEach((container) => {
