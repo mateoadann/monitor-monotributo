@@ -42,6 +42,23 @@ TIPO_COMP_MAP = {
     "20": "NDE",
     "21": "NCE",
 }
+TIPO_LABEL_MAP = {
+    "factura c": "C",
+    "factura e": "E",
+    "nota de credito c": "NCC",
+    "nota de credito e": "NCE",
+    "nota de debito c": "NDC",
+    "nota de debito e": "NDE",
+    "recibo c": "RC",
+    "recibo": "RC",
+}
+RESULTS_TABLE_HEADER_MARKERS = (
+    "fecha emision",
+    "tipo comprobante",
+    "nro comprobante",
+    "importe total",
+    "ver",
+)
 MAX_DESCARGAS = None
 HEADLESS = os.environ.get("PLAYWRIGHT_HEADLESS", "1") != "0"
 RECORDING = os.environ.get("recording") or os.environ.get("RECORDING")
@@ -195,6 +212,191 @@ def wait_for_login_result(page, timeout_ms: int = 10000) -> tuple[str, str | Non
             pass
         page.wait_for_timeout(250)
     return "timeout", None
+
+
+def format_comp_id(tipo_comp: str | None, numero_comp: str) -> str:
+    if tipo_comp:
+        return f"{tipo_comp} {numero_comp}"
+    return numero_comp
+
+
+def parse_tipo_comp(label: str | None) -> str | None:
+    if not label:
+        return None
+    key = normalize_key(label)
+    if not key:
+        return None
+
+    if key in TIPO_LABEL_MAP:
+        return TIPO_LABEL_MAP[key]
+    if key.startswith("factura"):
+        if key.endswith(" e"):
+            return "E"
+        if key.endswith(" c"):
+            return "C"
+    if "nota de credito" in key:
+        if key.endswith(" e"):
+            return "NCE"
+        if key.endswith(" c"):
+            return "NCC"
+    if "nota de debito" in key:
+        if key.endswith(" e"):
+            return "NDE"
+        if key.endswith(" c"):
+            return "NDC"
+    if key.startswith("recibo"):
+        return "RC"
+    return None
+
+
+def parse_result_row(row):
+    cells_raw = row.locator("td").all_text_contents()
+    cells = [normalize_label(item) for item in cells_raw if item and item.strip()]
+    row_text = " ".join(cells)
+    numero_comp = parse_numero_comp(row_text)
+    tipo_label = cells[1] if len(cells) > 1 else ""
+    tipo_comp = parse_tipo_comp(tipo_label) or parse_tipo_comp(row_text)
+    return {
+        "row": row,
+        "row_text": row_text,
+        "numero_comp": numero_comp,
+        "tipo_comp": tipo_comp,
+    }
+
+
+def find_results_table(page):
+    tables = page.locator("table")
+    table_count = tables.count()
+    if table_count <= 0:
+        return None, "sin-tablas"
+
+    best_idx = None
+    best_score = -1
+    for idx in range(table_count):
+        table = tables.nth(idx)
+        headers = [text.strip() for text in table.locator("th").all_text_contents() if text.strip()]
+        if not headers:
+            continue
+        header_key = normalize_key(" ".join(headers))
+        score = sum(1 for marker in RESULTS_TABLE_HEADER_MARKERS if marker in header_key)
+        if score > best_score:
+            best_score = score
+            best_idx = idx
+
+    if best_idx is not None and best_score >= 2:
+        return tables.nth(best_idx), f"headers-score={best_score}"
+    if table_count == 1:
+        return tables.first, "single-table-fallback"
+    return None, "no-header-match"
+
+
+def get_results_rows(page):
+    table, source = find_results_table(page)
+    if table:
+        rows = table.locator("tbody tr")
+        if rows.count() == 0:
+            rows = table.locator("tr:has(td)")
+        return rows, source
+
+    rows = page.locator("tr:has(td)")
+    return rows, f"global-fallback:{source}"
+
+
+def get_results_signature(table_rows) -> tuple[int, int, str | None, str | None]:
+    total_rows = table_rows.count()
+    if total_rows <= 0:
+        return 0, 0, None, None
+
+    keys = []
+    for idx in range(total_rows):
+        parsed = parse_result_row(table_rows.nth(idx))
+        numero_comp = parsed["numero_comp"]
+        if not numero_comp:
+            continue
+        keys.append(format_comp_id(parsed["tipo_comp"], numero_comp))
+
+    if not keys:
+        return total_rows, 0, None, None
+    return total_rows, len(keys), keys[0], keys[-1]
+
+
+def has_no_results_indicator(page) -> bool:
+    patterns = [
+        r"No se encontraron",
+        r"No existen comprobantes",
+        r"No hay comprobantes",
+        r"Sin resultados",
+    ]
+    for pattern in patterns:
+        try:
+            if page.get_by_text(re.compile(pattern, re.I)).count() > 0:
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def wait_for_results_stable(
+    page,
+    logger,
+    *,
+    baseline_signature: tuple[int, int, str | None, str | None] | None = None,
+    timeout_ms: int = 20000,
+    poll_ms: int = 300,
+    stable_window_ms: int = 1800,
+    min_wait_ms: int = 1200,
+):
+    started_at = time.monotonic()
+    last_change_at = started_at
+    changed_from_baseline = baseline_signature is None
+    last_signature = baseline_signature
+    table_rows, rows_source = get_results_rows(page)
+
+    while True:
+        table_rows, rows_source = get_results_rows(page)
+        signature = get_results_signature(table_rows)
+        now = time.monotonic()
+        elapsed_ms = (now - started_at) * 1000
+
+        if baseline_signature is not None and signature != baseline_signature:
+            changed_from_baseline = True
+        has_no_results = has_no_results_indicator(page)
+        if signature[0] == 0 and has_no_results:
+            changed_from_baseline = True
+
+        if signature != last_signature:
+            last_signature = signature
+            last_change_at = now
+        else:
+            stable_for_ms = (now - last_change_at) * 1000
+            has_rows_or_empty = signature[0] > 0 or has_no_results
+            has_min_wait = changed_from_baseline or elapsed_ms >= min_wait_ms
+            if has_rows_or_empty and has_min_wait and stable_for_ms >= stable_window_ms:
+                total_rows, parseable_count, first_item, last_item = signature
+                logger.info(
+                    "Resultados estables detectados (source=%s): filas=%s, parseables=%s, primer=%s, ultimo=%s.",
+                    rows_source,
+                    total_rows,
+                    parseable_count,
+                    first_item or "-",
+                    last_item or "-",
+                )
+                return table_rows, rows_source
+
+        if elapsed_ms >= timeout_ms:
+            total_rows, parseable_count, first_item, last_item = signature
+            logger.warning(
+                "Timeout esperando estabilidad de resultados (%sms, source=%s). Ultimo estado: filas=%s, parseables=%s, primer=%s, ultimo=%s.",
+                timeout_ms,
+                rows_source,
+                total_rows,
+                parseable_count,
+                first_item or "-",
+                last_item or "-",
+            )
+            return table_rows, rows_source
+
+        page.wait_for_timeout(poll_ms)
 
 
 def run(
@@ -417,8 +619,26 @@ def run(
             for tipo_code in tipos_a_consultar:
                 # Rango de fechas a consultar:
                 logger.info("Cargando rango de fechas.")
-                page2.get_by_role("textbox", name="Desde").fill(fecha_desde_value)
-                page2.get_by_role("textbox", name="Hasta").fill(fecha_hasta_value)
+                desde_input = page2.get_by_role("textbox", name="Desde")
+                hasta_input = page2.get_by_role("textbox", name="Hasta")
+                desde_input.fill(fecha_desde_value)
+                hasta_input.fill(fecha_hasta_value)
+                fecha_desde_ui = (desde_input.input_value() or "").strip()
+                fecha_hasta_ui = (hasta_input.input_value() or "").strip()
+                logger.info(
+                    "Rango de fechas solicitado: desde=%s hasta=%s | cargado en UI: desde=%s hasta=%s.",
+                    fecha_desde_value,
+                    fecha_hasta_value,
+                    fecha_desde_ui,
+                    fecha_hasta_ui,
+                )
+                if (
+                    fecha_desde_ui != fecha_desde_value
+                    or fecha_hasta_ui != fecha_hasta_value
+                ):
+                    logger.warning(
+                        "El rango de fechas visible en UI difiere del solicitado."
+                    )
 
                 # Tipo de comprobante a consultar (11: Facturas C, 13: Notas de crédito C)
                 if seleccionar_tipo:
@@ -429,43 +649,75 @@ def run(
 
                 # Botón para buscar según los parámetros ingresados
                 logger.info("Ejecutando búsqueda.")
+                baseline_rows, _ = get_results_rows(page2)
+                baseline_signature = get_results_signature(baseline_rows)
                 page2.get_by_role("button", name="Buscar").click()
 
-                logger.info("Esperando resultados.")
-                table_rows = page2.locator("table tbody tr")
-                if table_rows.count() == 0:
-                    table_rows = page2.locator("tr").filter(has=page2.locator("td"))
+                logger.info("Esperando resultados estables.")
+                table_rows, rows_source = wait_for_results_stable(
+                    page2,
+                    logger,
+                    baseline_signature=baseline_signature,
+                )
+                if rows_source.startswith("global-fallback"):
+                    logger.warning(
+                        "Tabla de resultados no identificada por encabezados, usando selector global (%s).",
+                        rows_source,
+                    )
 
                 total = table_rows.count()
                 logger.info("Filas encontradas: %s.", total)
                 if total == 0:
+                    logger.info(
+                        "Resumen busqueda (source=%s): filas=0, parseables=0, unicos=0, duplicados_grilla=0, omitidos_db=0, descargados=0, tipo_no_inferido=0.",
+                        rows_source,
+                    )
                     continue
 
                 tipo_comp_db = TIPO_COMP_MAP.get(tipo_code) if tipo_code else None
-                rows_with_numero = []
+                rows_to_process = []
+                seen_in_search = set()
+                parseable_count = 0
+                duplicate_rows = 0
+                unknown_type_count = 0
                 for idx in range(total):
                     row = table_rows.nth(idx)
-                    cells = row.locator("td").all_text_contents()
-                    row_text = " ".join(item.strip() for item in cells if item.strip())
-                    numero_comp = parse_numero_comp(row_text)
+                    parsed = parse_result_row(row)
+                    numero_comp = parsed["numero_comp"]
                     if not numero_comp:
-                        logger.debug("Fila sin numero de comprobante: %s", row_text)
+                        logger.debug("Fila sin numero de comprobante: %s", parsed["row_text"])
                         continue
-                    rows_with_numero.append((row, numero_comp))
+                    parseable_count += 1
+                    tipo_comp = parsed["tipo_comp"] or tipo_comp_db
+                    if not tipo_comp:
+                        unknown_type_count += 1
+                    dedupe_key = (tipo_comp or "", numero_comp)
+                    if dedupe_key in seen_in_search:
+                        duplicate_rows += 1
+                        logger.info(
+                            "Duplicado en grilla, se omite: %s.",
+                            format_comp_id(tipo_comp, numero_comp),
+                        )
+                        continue
+                    seen_in_search.add(dedupe_key)
+                    rows_to_process.append((row, tipo_comp, numero_comp))
 
-                logger.info("Comprobantes detectados: %s.", len(rows_with_numero))
-                for row, numero_comp in rows_with_numero:
+                logger.info("Comprobantes detectados: %s.", len(rows_to_process))
+                skipped_existing = 0
+                downloaded_count = 0
+                for row, tipo_comp, numero_comp in rows_to_process:
+                    comp_id = format_comp_id(tipo_comp, numero_comp)
                     ver_button = row.get_by_role("button", name="Ver")
                     if ver_button.count() == 0:
-                        logger.warning("Sin boton Ver para comprobante %s.", numero_comp)
+                        logger.warning("Sin boton Ver para comprobante %s.", comp_id)
                         continue
 
                     exists = False
-                    if monotributista_id and tipo_comp_db:
+                    if monotributista_id and tipo_comp:
                         exists = (
                             Factura.query.filter_by(
                                 monotributista_id=monotributista_id,
-                                tipo_comp=tipo_comp_db,
+                                tipo_comp=tipo_comp,
                                 numero_comp=numero_comp,
                             ).first()
                             is not None
@@ -480,14 +732,15 @@ def run(
                         )
 
                     if exists:
-                        logger.info("Ya existe en DB, se omite: %s.", numero_comp)
+                        skipped_existing += 1
+                        logger.info("Ya existe en DB, se omite: %s.", comp_id)
                         continue
 
                     if remaining_downloads is not None and remaining_downloads <= 0:
                         logger.info("Se alcanzo el limite de descargas.")
                         return
 
-                    logger.info("Descargando comprobante %s.", numero_comp)
+                    logger.info("Descargando comprobante %s.", comp_id)
                     with page2.expect_download() as download_info:
                         ver_button.click()
                     download = download_info.value
@@ -503,9 +756,22 @@ def run(
                         download.suggested_filename,
                         str(upload_root),
                     )
+                    downloaded_count += 1
 
                     if remaining_downloads is not None:
                         remaining_downloads -= 1
+
+                logger.info(
+                    "Resumen busqueda (source=%s): filas=%s, parseables=%s, unicos=%s, duplicados_grilla=%s, omitidos_db=%s, descargados=%s, tipo_no_inferido=%s.",
+                    rows_source,
+                    total,
+                    parseable_count,
+                    len(rows_to_process),
+                    duplicate_rows,
+                    skipped_existing,
+                    downloaded_count,
+                    unknown_type_count,
+                )
 
                 page2.get_by_role("button", name="< Volver").click()
         finally:

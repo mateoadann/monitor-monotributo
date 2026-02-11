@@ -52,22 +52,26 @@ shell:
 	docker compose exec web bash
 
 test:
-	docker compose exec web python -m pytest
+	$(MAKE) test-db
+	docker compose exec -T web python -m pytest
 
 test-quiet:
-	docker compose exec web python -m pytest -q
+	$(MAKE) test-db
+	docker compose exec -T web python -m pytest -q
 
 test-file:
 	@test -n "$(FILE)" || (echo "Falta FILE=tests/test_views.py" && exit 1)
-	docker compose exec web python -m pytest $(FILE)
+	$(MAKE) test-db
+	docker compose exec -T web python -m pytest $(FILE)
 
 test-views-clean:
 	docker compose build --no-cache web
 	docker compose up -d
-	docker compose exec web python -m pytest tests/test_views.py -q
+	$(MAKE) test-db
+	docker compose exec -T web python -m pytest tests/test_views.py -q
 
 test-db:
-	docker compose exec postgres psql -U monitor -c "CREATE DATABASE monitor_test;" || true
+	docker compose exec -T postgres psql -U monitor -d postgres -c "CREATE DATABASE monitor_test;" || true
 
 psql:
 	docker compose exec postgres psql -U monitor -d monitor
