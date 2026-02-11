@@ -1,6 +1,7 @@
 .PHONY: help up up-build down down-v logs-web logs-worker shell test test-quiet test-file
 .PHONY: restart-web restart-all
 .PHONY: psql redis rpa migrate-concepto storage-check test-db test-views-clean
+.PHONY: vigencias-bootstrap vigencias-bootstrap-dry
 
 help:
 	@echo "Targets disponibles:"
@@ -22,6 +23,8 @@ help:
 	@echo "  redis             Abre redis-cli"
 	@echo "  rpa               Ejecuta Playwright (headless)"
 	@echo "  migrate-concepto  Migra factura.concepto a TEXT"
+	@echo "  vigencias-bootstrap-dry  Simula bootstrap vigencias"
+	@echo "  vigencias-bootstrap      Aplica bootstrap vigencias"
 	@echo "  storage-check     Verifica uploads/downloads vacios"
 
 up:
@@ -87,3 +90,9 @@ migrate-concepto:
 
 storage-check:
 	docker compose exec web python check_storage_empty.py
+
+vigencias-bootstrap-dry:
+	docker compose exec -T web python scripts/bootstrap_vigencias_prod.py
+
+vigencias-bootstrap:
+	docker compose exec -T web python scripts/bootstrap_vigencias_prod.py --apply
