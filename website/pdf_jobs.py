@@ -194,7 +194,9 @@ def process_factura_import(import_id: int) -> None:
             factura_import.factura_id = factura.id
             factura_import.status = "done"
             factura_import.processed_at = datetime.now(timezone.utc)
-            factura_import.result_message = f"Factura creada: {numero_comp}"
+            factura_import.result_message = (
+                f"Comprobante {(punto_venta or '').zfill(5)}_{tipo_comp}_{(numero_raw or '').zfill(8)}"
+            )
             db.session.commit()
         except Exception as exc:
             db.session.rollback()

@@ -14,6 +14,7 @@ def run_rpa_chain(
     fecha_hasta: str | None = None,
     tipos: list[str] | None = None,
     seleccionar_tipo: bool = False,
+    batch_id: str | None = None,
 ) -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     logger = logging.getLogger(__name__)
@@ -37,6 +38,8 @@ def run_rpa_chain(
             args.extend(["--tipos", ",".join(tipos)])
         if seleccionar_tipo:
             args.append("--seleccionar-tipo")
+        if batch_id:
+            args.extend(["--batch-id", batch_id])
 
         logger.info("Ejecutando RPA para monotributista %s.", current_id)
         env = os.environ.copy()
@@ -55,4 +58,5 @@ def run_rpa_chain(
                 fecha_hasta,
                 tipos,
                 seleccionar_tipo,
+                batch_id,
             )

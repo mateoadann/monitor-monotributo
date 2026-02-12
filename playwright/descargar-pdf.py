@@ -144,11 +144,13 @@ def find_empresa_form(page):
 def enqueue_import(
     queue: Queue,
     monotributista_id: int | None,
+    batch_id: str | None,
     pdf_path: str,
     filename: str,
     upload_root: str,
 ) -> None:
     factura_import = FacturaImport(
+        batch_id=batch_id,
         monotributista_id=monotributista_id,
         status="pending",
         pdf_path=pdf_path,
@@ -177,9 +179,11 @@ def enqueue_import(
 def record_rpa_failure(
     monotributista_id: int | None,
     message: str,
+    batch_id: str | None = None,
 ) -> None:
     db.session.add(
         FacturaImport(
+            batch_id=batch_id,
             monotributista_id=monotributista_id,
             status="failed",
             pdf_path="",
@@ -409,6 +413,7 @@ def run(
     fecha_hasta: str | None = None,
     tipos_comprobante: list[str] | None = None,
     seleccionar_tipo: bool | None = None,
+    batch_id: str | None = None,
 ) -> None:
     logging.basicConfig(
         level=logging.INFO,
@@ -509,7 +514,7 @@ def run(
                 else:
                     message = login_error or "No se pudo validar login."
                 logger.error("Login fallido para CUIT %s", cuit_value)
-                record_rpa_failure(monotributista_id, message)
+                record_rpa_failure(monotributista_id, message, batch_id=batch_id)
                 return
 
             # Ingreso al servicio "Comprobantes en línea"
@@ -752,6 +757,7 @@ def run(
                     enqueue_import(
                         queue,
                         monotributista_id,
+                        batch_id,
                         str(target_path),
                         download.suggested_filename,
                         str(upload_root),
@@ -813,6 +819,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--fecha-hasta")
     parser.add_argument("--tipos")
     parser.add_argument("--seleccionar-tipo", action="store_true", default=None)
+    parser.add_argument("--batch-id")
     return parser.parse_args()
 
 
@@ -829,4 +836,5 @@ if __name__ == "__main__":
             fecha_hasta=args.fecha_hasta,
             tipos_comprobante=tipos,
             seleccionar_tipo=args.seleccionar_tipo,
+            batch_id=args.batch_id,
         )
