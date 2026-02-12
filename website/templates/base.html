@@ -23,8 +23,26 @@
       {% block header_row_content %}{% endblock %}
       {% if current_user.is_authenticated %}
         <nav class="topbar__actions">
-          <a class="ghost-link tab" data-tab="ayuda" href="{{ url_for('main.dashboard', tab='ayuda') }}">Ayuda</a>
-          <a class="primary-link" href="{{ url_for('auth.logout') }}">Salir</a>
+          <div class="user-dropdown">
+            <button class="user-dropdown__trigger" type="button">
+              <svg class="user-dropdown__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" width="16" height="16">
+                <path d="M12 12c2.7 0 5-2.3 5-5s-2.3-5-5-5-5 2.3-5 5 2.3 5 5 5zm0 2c-3.3 0-10 1.7-10 5v2h20v-2c0-3.3-6.7-5-10-5z" fill="currentColor"/>
+              </svg>
+              {{ current_user.nombre or current_user.username }}
+              <svg class="user-dropdown__caret" viewBox="0 0 24 24" aria-hidden="true" focusable="false" width="12" height="12">
+                <path d="M7 10l5 5 5-5z" fill="currentColor"/>
+              </svg>
+            </button>
+            <div class="user-dropdown__menu">
+              {% if current_user.can_manage_users() %}
+              <a class="user-dropdown__item" href="{{ url_for('main.dashboard', tab='usuarios') }}">Usuarios</a>
+              {% endif %}
+              <a class="user-dropdown__item" href="{{ url_for('main.change_password') }}">Cambiar contrasena</a>
+              <a class="user-dropdown__item" href="{{ url_for('main.dashboard', tab='ayuda') }}">Ayuda</a>
+              <div class="user-dropdown__divider"></div>
+              <a class="user-dropdown__item user-dropdown__item--danger" href="{{ url_for('auth.logout') }}">Salir</a>
+            </div>
+          </div>
         </nav>
       {% endif %}
     </div>
@@ -116,6 +134,21 @@
     confirmModal.querySelectorAll("[data-close]").forEach((button) => {
       button.addEventListener("click", closeConfirm);
     });
+
+    const userDropdown = document.querySelector(".user-dropdown");
+    if (userDropdown) {
+      const trigger = userDropdown.querySelector(".user-dropdown__trigger");
+      const menu = userDropdown.querySelector(".user-dropdown__menu");
+      trigger.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const isOpen = menu.classList.contains("is-open");
+        menu.classList.toggle("is-open", !isOpen);
+      });
+      document.addEventListener("click", () => {
+        menu.classList.remove("is-open");
+      });
+      menu.addEventListener("click", (e) => e.stopPropagation());
+    }
 
     const flashSuccess = document.querySelectorAll(".flash--success");
     flashSuccess.forEach((message) => {

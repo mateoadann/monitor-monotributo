@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="form-page">
+  <div class="form-card">
+    <h1>Editar usuario</h1>
+    {% set flash_messages = get_flashed_messages(with_categories=true) %}
+    {% if flash_messages %}
+      {% for category, message in flash_messages %}
+        <div class="flash flash--{{ category }} flash--modal">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+    <form method="post" class="panel__form" data-confirm="Confirmar guardado del usuario?">
+      <div class="form-grid">
+        <label class="field">
+          Usuario
+          <input type="text" value="{{ user.username }}" disabled>
+        </label>
+        <label class="field">
+          Nombre completo
+          <input type="text" name="nombre" value="{{ user.nombre or '' }}">
+        </label>
+        <label class="field">
+          Rol
+          <select name="role" required>
+            {% for role_code in roles %}
+              <option value="{{ role_code }}" {% if user.role == role_code %}selected{% endif %}>
+                {{ role_labels.get(role_code, role_code) }}
+              </option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="field">
+          Estado
+          <select name="is_active">
+            <option value="1" {% if user.is_active_user %}selected{% endif %}>Activo</option>
+            <option value="0" {% if not user.is_active_user %}selected{% endif %}>Inactivo</option>
+          </select>
+        </label>
+        <label class="field">
+          Nueva contrasena (dejar vacio para no cambiar)
+          <input type="password" name="password">
+        </label>
+      </div>
+      <div class="form-actions">
+        <button class="primary" type="submit">Guardar cambios</button>
+        <a class="ghost-link" href="{{ url_for('main.dashboard', tab='usuarios') }}">Volver</a>
+      </div>
+    </form>
+  </div>
+</section>
+{% endblock %}

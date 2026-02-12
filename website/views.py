@@ -1,24 +1,29 @@
 from __future__ import annotations
 
+import csv
 from collections import OrderedDict
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from decimal import Decimal, InvalidOperation
 import os
+import io
 import uuid
 
 from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, session, url_for
-from flask_login import login_required
+from flask_login import current_user, login_required
 from rq import Retry
 from sqlalchemy import or_
+from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
+from website.auth_utils import admin_required, editor_required
 from website.models import (
     Categoria,
     CategoriaTope,
     Factura,
     FacturaImport,
     Monotributista,
+    User,
     Vigencia,
     db,
 )
@@ -46,6 +51,12 @@ MONTH_LABELS = [
 CATEGORY_CODES = [chr(code) for code in range(ord("A"), ord("K") + 1)]
 RPA_TIPOS_DEFAULT = ["11", "12", "13", "15", "19", "20", "21"]
 CREDIT_NOTE_TYPES = {"NC", "NCC", "NCE"}
+MONOTRIBUTISTA_IMPORT_REQUIRED_HEADERS = (
+    "razon_social",
+    "cuit",
+    "clave_fiscal",
+    "categoria_actual",
+)
 
 
 def parse_date(value: str | None):
@@ -106,6 +117,74 @@ def normalize_cuit(value: str | None) -> str:
 
 def is_valid_cuit(cuit: str) -> bool:
     return cuit.isdigit() and len(cuit) == 11
+
+
+def normalize_csv_header(value: str | None) -> str:
+    return (value or "").strip().lower().replace(" ", "_")
+
+
+def load_monotributistas_csv(uploaded_file) -> list[dict[str, str]]:
+    raw_bytes = uploaded_file.read()
+    if not raw_bytes:
+        raise ValueError("El archivo CSV esta vacio.")
+
+    try:
+        content = raw_bytes.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        try:
+            content = raw_bytes.decode("latin-1")
+        except UnicodeDecodeError as exc:
+            raise ValueError(
+                "No se pudo leer el archivo CSV. Usa UTF-8 o Latin-1."
+            ) from exc
+
+    if not content.strip():
+        raise ValueError("El archivo CSV no contiene filas.")
+
+    sample = "\n".join(content.splitlines()[:5])
+    delimiter = ","
+    try:
+        dialect = csv.Sniffer().sniff(sample, delimiters=",;")
+        delimiter = dialect.delimiter
+    except csv.Error:
+        if sample.count(";") > sample.count(","):
+            delimiter = ";"
+
+    reader = csv.DictReader(io.StringIO(content), delimiter=delimiter)
+    if not reader.fieldnames:
+        raise ValueError("No se detectaron encabezados en el CSV.")
+
+    header_map = {
+        normalize_csv_header(header): header
+        for header in reader.fieldnames
+        if normalize_csv_header(header)
+    }
+    missing_headers = [
+        header
+        for header in MONOTRIBUTISTA_IMPORT_REQUIRED_HEADERS
+        if header not in header_map
+    ]
+    if missing_headers:
+        missing_label = ", ".join(missing_headers)
+        raise ValueError(f"Faltan columnas requeridas en CSV: {missing_label}.")
+
+    rows: list[dict[str, str]] = []
+    for line_no, row in enumerate(reader, start=2):
+        if not row:
+            continue
+        parsed = {
+            key: (row.get(header_map[key]) or "").strip()
+            for key in MONOTRIBUTISTA_IMPORT_REQUIRED_HEADERS
+        }
+        if not any(parsed.values()):
+            continue
+        parsed["line_no"] = str(line_no)
+        rows.append(parsed)
+
+    if not rows:
+        raise ValueError("El CSV no tiene filas de datos para importar.")
+
+    return rows
 
 
 def format_date(value: date | None) -> str:
@@ -495,6 +574,20 @@ def dashboard():
         for item in factura_import_logs:
             item.created_at_label = format_datetime_ar(item.created_at)
 
+    usuarios = []
+    if current_user.can_manage_users():
+        usuarios = [
+            {
+                "id": u.id,
+                "username": u.username,
+                "nombre": u.nombre,
+                "role": u.role,
+                "role_label": User.ROLE_LABELS.get(u.role, u.role),
+                "is_active": u.is_active_user,
+            }
+            for u in User.query.order_by(User.username).all()
+        ]
+
     return render_template(
         "dashboard.html",
         monotributistas=monotributistas,
@@ -525,11 +618,17 @@ def dashboard():
         mono_form=mono_form,
         open_modal=open_modal,
         factura_import_logs=factura_import_logs,
+        usuarios=usuarios,
+        can_edit=current_user.can_edit_data(),
+        can_manage_config=current_user.can_manage_config(),
+        can_manage_users=current_user.can_manage_users(),
+        can_run_rpa=current_user.can_run_rpa(),
     )
 
 
 @main_bp.post("/monotributistas/create")
 @login_required
+@editor_required
 def create_monotributista():
     razon_social = request.form.get("razon_social", "").strip()
     cuit = normalize_cuit(request.form.get("cuit"))
@@ -591,8 +690,120 @@ def create_monotributista():
     return redirect(url_for("main.dashboard", tab="monotributistas"))
 
 
+@main_bp.post("/monotributistas/import-csv")
+@login_required
+@editor_required
+def import_monotributistas_csv():
+    csv_file = request.files.get("monotributistas_csv")
+    dry_run = request.form.get("dry_run") == "1"
+
+    if not csv_file or not csv_file.filename:
+        flash("Selecciona un archivo CSV para importar.", "error")
+        session["open_modal"] = "monotributistas-import"
+        return redirect(url_for("main.dashboard", tab="monotributistas"))
+
+    try:
+        parsed_rows = load_monotributistas_csv(csv_file)
+    except ValueError as exc:
+        flash(str(exc), "error")
+        session["open_modal"] = "monotributistas-import"
+        return redirect(url_for("main.dashboard", tab="monotributistas"))
+
+    categorias = Categoria.query.order_by(Categoria.orden).all()
+    categorias_by_code = {categoria.nombre.upper(): categoria for categoria in categorias}
+
+    seen_cuits = set()
+    valid_rows = []
+    errors = []
+    for row in parsed_rows:
+        line_no = row.get("line_no", "?")
+        razon_social = row["razon_social"].strip()
+        cuit = normalize_cuit(row["cuit"])
+        clave_fiscal = row["clave_fiscal"].strip()
+        categoria_code = row["categoria_actual"].strip().upper()
+
+        row_errors = []
+        if not razon_social:
+            row_errors.append("razon_social vacia")
+        if not cuit:
+            row_errors.append("cuit vacio")
+        elif not is_valid_cuit(cuit):
+            row_errors.append("cuit invalido")
+        if not clave_fiscal:
+            row_errors.append("clave_fiscal vacia")
+        categoria = categorias_by_code.get(categoria_code)
+        if not categoria:
+            row_errors.append("categoria_actual invalida")
+        if cuit in seen_cuits:
+            row_errors.append("cuit duplicado en archivo")
+
+        if row_errors:
+            errors.append(f"Fila {line_no}: {', '.join(row_errors)}")
+            continue
+
+        seen_cuits.add(cuit)
+        valid_rows.append(
+            {
+                "razon_social": razon_social,
+                "cuit": cuit,
+                "clave_fiscal": clave_fiscal,
+                "categoria": categoria,
+            }
+        )
+
+    cuits_to_check = [row["cuit"] for row in valid_rows]
+    existing_cuits = set()
+    if cuits_to_check:
+        existing_rows = Monotributista.query.filter(
+            Monotributista.cuit.in_(cuits_to_check)
+        ).all()
+        existing_cuits = {item.cuit for item in existing_rows}
+
+    created = 0
+    skipped_existing = 0
+    for row in valid_rows:
+        if row["cuit"] in existing_cuits:
+            skipped_existing += 1
+            continue
+        created += 1
+        if dry_run:
+            continue
+        monotributista = Monotributista(
+            razon_social=row["razon_social"],
+            cuit=row["cuit"],
+            clave_fiscal=row["clave_fiscal"],
+            categoria_actual_id=row["categoria"].id,
+            categoria_corresponde_id=row["categoria"].id,
+        )
+        db.session.add(monotributista)
+
+    if dry_run:
+        db.session.rollback()
+    else:
+        db.session.commit()
+
+    mode_label = "Simulacion" if dry_run else "Importacion"
+    flash(
+        f"{mode_label} finalizada: creados={created}, omitidos_existentes={skipped_existing}, errores={len(errors)}.",
+        "success",
+    )
+
+    if skipped_existing:
+        flash(f"Se omitieron {skipped_existing} CUIT ya existentes.", "success")
+
+    if errors:
+        session["open_modal"] = "monotributistas-import"
+        for message in errors[:8]:
+            flash(message, "error")
+        if len(errors) > 8:
+            flash(f"... y {len(errors) - 8} errores adicionales.", "error")
+
+    return redirect(url_for("main.dashboard", tab="monotributistas"))
+
+
 @main_bp.route("/monotributistas/<int:monotributista_id>/edit", methods=["GET", "POST"])
 @login_required
+@editor_required
 def edit_monotributista(monotributista_id):
     monotributista = Monotributista.query.get_or_404(monotributista_id)
     categorias = Categoria.query.order_by(Categoria.orden).all()
@@ -665,6 +876,7 @@ def edit_monotributista(monotributista_id):
 
 @main_bp.post("/monotributistas/<int:monotributista_id>/delete")
 @login_required
+@editor_required
 def delete_monotributista(monotributista_id):
     monotributista = Monotributista.query.get_or_404(monotributista_id)
     FacturaImport.query.filter_by(monotributista_id=monotributista.id).update(
@@ -678,6 +890,7 @@ def delete_monotributista(monotributista_id):
 
 @main_bp.post("/facturas/create")
 @login_required
+@editor_required
 def create_factura():
     pdf_files = [item for item in request.files.getlist("pdf_file") if item and item.filename]
     has_pdf = len(pdf_files) > 0
@@ -685,11 +898,13 @@ def create_factura():
     if has_pdf:
         monotributista_id = request.form.get("monotributista_id")
         monotributista_id = int(monotributista_id) if monotributista_id else None
+        upload_batch_id = uuid.uuid4().hex
 
         invalid = [item.filename for item in pdf_files if not item.filename.lower().endswith(".pdf")]
         if invalid:
             db.session.add(
                 FacturaImport(
+                    batch_id=upload_batch_id,
                     monotributista_id=monotributista_id,
                     status="failed",
                     pdf_path="",
@@ -714,6 +929,7 @@ def create_factura():
             pdf_file.save(pdf_path)
 
             factura_import = FacturaImport(
+                batch_id=upload_batch_id,
                 monotributista_id=monotributista_id,
                 status="pending",
                 pdf_path=pdf_path,
@@ -762,6 +978,7 @@ def create_factura():
     fecha_desde = parse_date(request.form.get("fecha_desde"))
     fecha_hasta = parse_date(request.form.get("fecha_hasta"))
     concepto = request.form.get("concepto", "").strip()
+    manual_batch_id = uuid.uuid4().hex
 
     is_export = tipo_comp == "E"
     if (
@@ -774,6 +991,7 @@ def create_factura():
     ):
         db.session.add(
             FacturaImport(
+                batch_id=manual_batch_id,
                 monotributista_id=int(monotributista_id) if monotributista_id else None,
                 status="failed",
                 pdf_path="",
@@ -790,6 +1008,7 @@ def create_factura():
     if not monotributista:
         db.session.add(
             FacturaImport(
+                batch_id=manual_batch_id,
                 monotributista_id=None,
                 status="failed",
                 pdf_path="",
@@ -810,6 +1029,7 @@ def create_factura():
     if (punto_venta and not punto_venta.isdigit()) or not nro_comp.isdigit():
         db.session.add(
             FacturaImport(
+                batch_id=manual_batch_id,
                 monotributista_id=int(monotributista_id) if monotributista_id else None,
                 status="failed",
                 pdf_path="",
@@ -834,6 +1054,7 @@ def create_factura():
     if existing:
         db.session.add(
             FacturaImport(
+                batch_id=manual_batch_id,
                 monotributista_id=int(monotributista_id),
                 status="failed",
                 pdf_path="",
@@ -864,12 +1085,13 @@ def create_factura():
     db.session.flush()
     db.session.add(
         FacturaImport(
+            batch_id=manual_batch_id,
             monotributista_id=int(monotributista_id),
             status="done",
             pdf_path="",
             source="manual",
             factura_id=factura.id,
-            result_message=f"Factura creada: {numero_comp}",
+            result_message=f"Comprobante {punto_venta.zfill(5)}_{tipo_comp}_{nro_comp.zfill(8)}",
             processed_at=datetime.now(timezone.utc),
         )
     )
@@ -881,6 +1103,7 @@ def create_factura():
 
 @main_bp.route("/facturas/<int:factura_id>/edit", methods=["GET", "POST"])
 @login_required
+@editor_required
 def edit_factura(factura_id):
     factura = Factura.query.get_or_404(factura_id)
     monotributistas = Monotributista.query.order_by(Monotributista.razon_social).all()
@@ -977,6 +1200,7 @@ def edit_factura(factura_id):
 
 @main_bp.post("/facturas/<int:factura_id>/delete")
 @login_required
+@editor_required
 def delete_factura(factura_id):
     factura = Factura.query.get_or_404(factura_id)
     FacturaImport.query.filter_by(factura_id=factura.id).update(
@@ -993,26 +1217,53 @@ def delete_factura(factura_id):
 def factura_imports():
     logs = (
         FacturaImport.query.order_by(FacturaImport.created_at.desc())
-        .limit(200)
+        .limit(500)
         .all()
     )
-    payload = []
+    items = []
+    counts = {"pending": 0, "processing": 0, "done": 0, "failed": 0}
+    active_row = (
+        FacturaImport.query.filter(
+            FacturaImport.batch_id.isnot(None),
+            FacturaImport.status.in_(["pending", "processing"]),
+        )
+        .order_by(FacturaImport.created_at.desc())
+        .first()
+    )
+    active_batch_id = active_row.batch_id if active_row else None
     for item in logs:
+        status = item.status or "pending"
         created_at_label = format_datetime_ar(item.created_at)
-        payload.append(
+        items.append(
             {
                 "created_at": created_at_label,
                 "monotributista": item.monotributista.razon_social if item.monotributista else "-",
                 "source": item.source or "-",
-                "status": item.status or "-",
+                "status": status,
                 "result": item.result_message or item.error or "-",
             }
         )
-    return jsonify(payload)
+    if active_batch_id:
+        batch_logs = FacturaImport.query.filter_by(batch_id=active_batch_id).all()
+        for item in batch_logs:
+            status = item.status or "pending"
+            bucket = status if status in counts else (
+                "failed" if status == "failed_viewed" else "pending"
+            )
+            counts[bucket] += 1
+    return jsonify(
+        {
+            "items": items,
+            "counts": counts,
+            "has_active": bool(active_batch_id),
+            "active_batch_id": active_batch_id,
+        }
+    )
 
 
 @main_bp.post("/vigencias/create")
 @login_required
+@admin_required
 def create_vigencia():
     fecha_desde = parse_date(request.form.get("vigencia_desde"))
     fecha_hasta = parse_date(request.form.get("vigencia_hasta"))
@@ -1051,6 +1302,7 @@ def create_vigencia():
 
 @main_bp.route("/vigencias/<int:vigencia_id>/edit", methods=["GET", "POST"])
 @login_required
+@admin_required
 def edit_vigencia(vigencia_id):
     vigencia = Vigencia.query.get_or_404(vigencia_id)
     if request.method == "POST":
@@ -1098,6 +1350,7 @@ def edit_vigencia(vigencia_id):
 
 @main_bp.post("/vigencias/<int:vigencia_id>/topes")
 @login_required
+@admin_required
 def update_vigencia_topes(vigencia_id):
     vigencia = Vigencia.query.get_or_404(vigencia_id)
     topes = (
@@ -1127,6 +1380,7 @@ def update_vigencia_topes(vigencia_id):
 
 @main_bp.post("/vigencias/<int:vigencia_id>/delete")
 @login_required
+@admin_required
 def delete_vigencia(vigencia_id):
     vigencia = Vigencia.query.get_or_404(vigencia_id)
     db.session.delete(vigencia)
@@ -1137,6 +1391,7 @@ def delete_vigencia(vigencia_id):
 
 @main_bp.post("/rpa/run")
 @login_required
+@editor_required
 def run_rpa():
     fecha_desde_raw = request.form.get("rpa_fecha_desde", "").strip()
     fecha_hasta_raw = request.form.get("rpa_fecha_hasta", "").strip()
@@ -1195,6 +1450,7 @@ def run_rpa():
         return jsonify({"error": "No hay monotributistas para procesar."}), 400
 
     ids = [item.id for item in monotributistas]
+    batch_id = uuid.uuid4().hex
     queue = get_queue()
     queue.enqueue(
         run_rpa_chain,
@@ -1203,5 +1459,113 @@ def run_rpa():
         fecha_hasta,
         tipos if seleccionar_tipo else None,
         seleccionar_tipo,
+        batch_id,
     )
-    return jsonify({"queued": len(ids)})
+    return jsonify({"queued": len(ids), "batch_id": batch_id})
+
+
+# --- Gestion de usuarios ---
+
+
+@main_bp.post("/usuarios/create")
+@login_required
+@admin_required
+def create_usuario():
+    username = request.form.get("username", "").strip().lower()
+    nombre = request.form.get("nombre", "").strip()
+    password = request.form.get("password", "").strip()
+    role = request.form.get("role", "visor")
+
+    if not username or not password:
+        flash("Usuario y contrasena son requeridos.", "error")
+        return redirect(url_for("main.dashboard", tab="usuarios"))
+
+    if role not in User.ROLES:
+        flash("Rol invalido.", "error")
+        return redirect(url_for("main.dashboard", tab="usuarios"))
+
+    if User.query.filter_by(username=username).first():
+        flash("El nombre de usuario ya existe.", "error")
+        return redirect(url_for("main.dashboard", tab="usuarios"))
+
+    user = User(
+        username=username,
+        nombre=nombre,
+        password_hash=generate_password_hash(password),
+        role=role,
+    )
+    db.session.add(user)
+    db.session.commit()
+    flash("Usuario creado.", "success")
+    return redirect(url_for("main.dashboard", tab="usuarios"))
+
+
+@main_bp.route("/usuarios/<int:user_id>/edit", methods=["GET", "POST"])
+@login_required
+@admin_required
+def edit_usuario(user_id):
+    user = User.query.get_or_404(user_id)
+
+    if request.method == "POST":
+        nombre = request.form.get("nombre", "").strip()
+        role = request.form.get("role", user.role)
+        is_active = request.form.get("is_active") == "1"
+        new_password = request.form.get("password", "").strip()
+
+        if role not in User.ROLES:
+            flash("Rol invalido.", "error")
+        elif user.id == current_user.id and role != "admin":
+            flash("No puedes quitarte el rol de administrador.", "error")
+        else:
+            user.nombre = nombre
+            user.role = role
+            user.is_active_user = is_active
+            if new_password:
+                user.password_hash = generate_password_hash(new_password)
+            db.session.commit()
+            flash("Usuario actualizado.", "success")
+            return redirect(url_for("main.dashboard", tab="usuarios"))
+
+    return render_template(
+        "edit_usuario.html",
+        user=user,
+        roles=User.ROLES,
+        role_labels=User.ROLE_LABELS,
+    )
+
+
+@main_bp.post("/usuarios/<int:user_id>/delete")
+@login_required
+@admin_required
+def delete_usuario(user_id):
+    user = User.query.get_or_404(user_id)
+    if user.id == current_user.id:
+        flash("No puedes eliminarte a ti mismo.", "error")
+        return redirect(url_for("main.dashboard", tab="usuarios"))
+    db.session.delete(user)
+    db.session.commit()
+    flash("Usuario eliminado.", "success")
+    return redirect(url_for("main.dashboard", tab="usuarios"))
+
+
+@main_bp.route("/perfil/password", methods=["GET", "POST"])
+@login_required
+def change_password():
+    if request.method == "POST":
+        current_password = request.form.get("current_password", "").strip()
+        new_password = request.form.get("new_password", "").strip()
+        confirm_password = request.form.get("confirm_password", "").strip()
+
+        if not check_password_hash(current_user.password_hash, current_password):
+            flash("La contrasena actual es incorrecta.", "error")
+        elif not new_password or len(new_password) < 4:
+            flash("La nueva contrasena debe tener al menos 4 caracteres.", "error")
+        elif new_password != confirm_password:
+            flash("Las contrasenas no coinciden.", "error")
+        else:
+            current_user.password_hash = generate_password_hash(new_password)
+            db.session.commit()
+            flash("Contrasena actualizada.", "success")
+            return redirect(url_for("main.dashboard"))
+
+    return render_template("change_password.html")

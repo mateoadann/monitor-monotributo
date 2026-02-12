@@ -29,7 +29,9 @@
     <button class="tab {% if active_tab == 'monotributistas' %}is-active{% endif %}" type="button" data-tab="monotributistas">Monotributista</button>
     <button class="tab {% if active_tab == 'facturas' %}is-active{% endif %}" type="button" data-tab="facturas">Facturas</button>
     <button class="tab {% if active_tab == 'calculo' %}is-active{% endif %}" type="button" data-tab="calculo">Calculo</button>
+    {% if can_manage_config %}
     <button class="tab {% if active_tab == 'configuracion' %}is-active{% endif %}" type="button" data-tab="configuracion">Configuracion</button>
+    {% endif %}
   </div>
 </div>
 {% endblock %}
@@ -59,9 +61,9 @@
       <label class="field field--inline">
         Orden
         <select id="monoOrden">
-          <option value="razon_asc">Razon social A-Z</option>
-          <option value="razon_desc">Razon social Z-A</option>
-          <option value="categoria_asc">Categoria actual A-Z</option>
+          <option value="razon_asc">Razon social A-K</option>
+          <option value="razon_desc">Razon social K-A</option>
+          <option value="categoria_asc">Categoria actual A-K</option>
         </select>
       </label>
       <form class="selector selector--inline" method="get">
@@ -74,8 +76,18 @@
         <button class="outline" type="submit">Ver periodo</button>
       </form>
     </div>
-    <div class="panel__actions">
-      <button class="primary" type="button" data-open="monotributista">Nuevo monotributista</button>
+    <div class="monotributistas__toolbar">
+      {% if can_edit %}
+      <div class="panel__actions panel__actions--inline">
+        <button class="primary" type="button" data-open="monotributista">Nuevo monotributista</button>
+        <button class="ghost-button" type="button" data-open="monotributistas-import">Importar CSV</button>
+      </div>
+      {% endif %}
+      <div class="pagination pagination--top" data-pagination="monotributistas-top">
+        <button class="ghost-button" type="button" data-page="prev">Anterior</button>
+        <span class="pagination__info" data-page-info>Pagina 1 de 1</span>
+        <button class="ghost-button" type="button" data-page="next">Siguiente</button>
+      </div>
     </div>
     <div class="table">
       <div class="table__row table__head table__row--mono">
@@ -101,6 +113,7 @@
         </span>
         <span>{{ item.categoria_actual }}</span>
         <span class="badge badge--{{ item.estado_categoria }}">{{ item.categoria_corresponde }}</span>
+        {% if can_edit %}
         <span class="row-actions">
           <a class="icon-link" href="{{ url_for('main.edit_monotributista', monotributista_id=item.id) }}" aria-label="Editar">
             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -115,8 +128,16 @@
             </button>
           </form>
         </span>
+        {% else %}
+        <span></span>
+        {% endif %}
       </div>
       {% endfor %}
+    </div>
+    <div class="pagination pagination--bottom" data-pagination="monotributistas-bottom">
+      <button class="ghost-button" type="button" data-page="prev">Anterior</button>
+      <span class="pagination__info" data-page-info>Pagina 1 de 1</span>
+      <button class="ghost-button" type="button" data-page="next">Siguiente</button>
     </div>
   </div>
 
@@ -159,9 +180,13 @@
         Tipo
         <select id="facturaTipo">
           <option value="">Todos</option>
-          <option value="C">C</option>
-          <option value="NCC">NCC</option>
-          <option value="E">E</option>
+          <option value="C"> Factura C</option>
+          <option value="NDC">Nota Débito C</option>
+          <option value="NCC">Nota Crédito C</option>
+          <option value="RC">Recibo C</option>
+          <option value="E">Factura E</option>
+          <option value="NDE">Nota Débito E</option>
+          <option value="NCE">Nota Crédito E</option>
         </select>
       </label>
       <label class="field field--inline">
@@ -176,9 +201,13 @@
     </div>
     <div class="facturas__toolbar">
       <div class="panel__actions panel__actions--inline">
+        {% if can_edit %}
         <button class="primary" type="button" data-open="factura">Cargar factura</button>
+        {% endif %}
         <button class="ghost-button" type="button" data-open="factura-imports">Ver importaciones</button>
+        {% if can_run_rpa %}
         <button class="ghost-button" type="button" data-open="rpa">Procesar RPA</button>
+        {% endif %}
       </div>
       <div class="pagination pagination--top" data-pagination="facturas-top">
         <button class="ghost-button" type="button" data-page="prev">Anterior</button>
@@ -218,6 +247,7 @@
             {{ item.concepto }}
           {% endif %}
         </span>
+        {% if can_edit %}
         <span class="row-actions">
           <a class="icon-link" href="{{ url_for('main.edit_factura', factura_id=item.id) }}" aria-label="Editar">
             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -232,6 +262,9 @@
             </button>
           </form>
         </span>
+        {% else %}
+        <span></span>
+        {% endif %}
       </div>
       {% endfor %}
     </div>
@@ -344,6 +377,7 @@
     {% endif %}
   </div>
 
+  {% if can_manage_config %}
   <div class="tabs__panel {% if active_tab == 'configuracion' %}is-active{% endif %}" id="configuracion">
     <div class="panel__header">
       <h2>Configuracion</h2>
@@ -390,6 +424,58 @@
       {% endfor %}
     </div>
   </div>
+  {% endif %}
+
+  {% if can_manage_users %}
+  <div class="tabs__panel {% if active_tab == 'usuarios' %}is-active{% endif %}" id="usuarios">
+    <div class="panel__header">
+      <h2>Gestion de usuarios</h2>
+      <span class="panel__hint">Crea y administra usuarios del sistema.</span>
+    </div>
+    <div class="panel__actions">
+      <button class="primary" type="button" data-open="usuario">Nuevo usuario</button>
+    </div>
+    <div class="table">
+      <div class="table__row table__head table__row--usuarios">
+        <span>Usuario</span>
+        <span>Nombre</span>
+        <span>Rol</span>
+        <span>Estado</span>
+        <span>Acciones</span>
+      </div>
+      {% for item in usuarios %}
+      <div class="table__row table__row--usuarios">
+        <span>{{ item.username }}</span>
+        <span>{{ item.nombre or '-' }}</span>
+        <span>{{ item.role_label }}</span>
+        <span>
+          {% if item.is_active %}
+            <span class="badge badge--mantiene">Activo</span>
+          {% else %}
+            <span class="badge badge--sube">Inactivo</span>
+          {% endif %}
+        </span>
+        <span class="row-actions">
+          <a class="icon-link" href="{{ url_for('main.edit_usuario', user_id=item.id) }}" aria-label="Editar">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M4 17.25V20h2.75l8.1-8.1-2.75-2.75-8.1 8.1zM20.7 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" fill="currentColor"/>
+            </svg>
+          </a>
+          {% if item.id != current_user.id %}
+          <form method="post" action="{{ url_for('main.delete_usuario', user_id=item.id) }}" data-confirm="Confirmar eliminacion del usuario?">
+            <button class="icon-link icon-link--danger" type="submit" aria-label="Eliminar" title="Eliminar">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M6 7h12l-1 13a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L6 7zm3-4h6l1 2H8l1-2z" fill="currentColor"/>
+              </svg>
+            </button>
+          </form>
+          {% endif %}
+        </span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
 
   <div class="tabs__panel {% if active_tab == 'ayuda' %}is-active{% endif %}" id="ayuda">
     <div class="panel__header">
@@ -638,6 +724,42 @@
   </div>
 </div>
 
+<div class="modal" data-modal="monotributistas-import">
+  <div class="modal__content">
+    <div class="modal__header">
+      <h3>Importar monotributistas</h3>
+      <button class="modal__close" type="button" data-close>&times;</button>
+    </div>
+    {% if open_modal == "monotributistas-import" and flash_messages %}
+      {% for category, message in flash_messages %}
+        {% if category == "error" %}
+          <div class="flash flash--error flash--modal">{{ message }}</div>
+        {% endif %}
+      {% endfor %}
+    {% endif %}
+    <form class="panel__form" method="post" enctype="multipart/form-data" action="{{ url_for('main.import_monotributistas_csv') }}" data-confirm="Confirmar importacion de monotributistas?">
+      <label class="field field--file">
+        Archivo CSV
+        <input class="file-input" type="file" name="monotributistas_csv" accept=".csv,text/csv" id="monotributistas-csv-input" required>
+        <div class="file-actions">
+          <label class="file-button" for="monotributistas-csv-input">Seleccionar CSV</label>
+          <div class="file-info">
+            <div class="file-list" data-mono-file-list>
+              <span class="file-empty">Sin archivo</span>
+            </div>
+          </div>
+        </div>
+      </label>
+      <label class="checklist__item">
+        <input type="checkbox" name="dry_run" value="1" checked>
+        Simular importacion (no guarda cambios)
+      </label>
+      <p class="form-hint">Columnas requeridas: razon_social, cuit, clave_fiscal, categoria_actual</p>
+      <button class="primary" type="submit">Procesar importacion</button>
+    </form>
+  </div>
+</div>
+
 <div class="modal" data-modal="factura">
   <div class="modal__content">
     <div class="modal__header">
@@ -732,6 +854,27 @@
       <h3>Importaciones de facturas</h3>
       <button class="modal__close" type="button" data-close>&times;</button>
     </div>
+    <div class="imports-progress" data-imports-progress>
+      <div class="imports-progress__bar">
+        <div class="imports-progress__segment imports-progress__segment--done" data-progress="done" style="width:0"></div>
+        <div class="imports-progress__segment imports-progress__segment--failed" data-progress="failed" style="width:0"></div>
+        <div class="imports-progress__segment imports-progress__segment--processing" data-progress="processing" style="width:0"></div>
+        <div class="imports-progress__segment imports-progress__segment--pending" data-progress="pending" style="width:0"></div>
+      </div>
+      <div class="imports-progress__legend">
+        <span class="imports-progress__stat imports-progress__stat--done" data-count="done">0 finalizadas</span>
+        <span class="imports-progress__stat imports-progress__stat--failed" data-count="failed">0 fallidas</span>
+        <span class="imports-progress__stat imports-progress__stat--processing" data-count="processing">0 procesando</span>
+        <span class="imports-progress__stat imports-progress__stat--pending" data-count="pending">0 pendientes</span>
+      </div>
+    </div>
+    <div class="imports-filters" data-imports-filters>
+      <button class="imports-filter is-active" type="button" data-filter="all">Todas</button>
+      <button class="imports-filter" type="button" data-filter="failed">Fallidas</button>
+      <button class="imports-filter" type="button" data-filter="pending">Pendientes</button>
+      <button class="imports-filter" type="button" data-filter="processing">Procesando</button>
+      <button class="imports-filter" type="button" data-filter="done">Finalizadas</button>
+    </div>
     <div class="table">
       <div class="table__row table__row--imports table__head">
         <span>Fecha</span>
@@ -741,51 +884,6 @@
         <span>Resultado</span>
       </div>
       <div data-imports-body>
-        {% if factura_import_logs %}
-          {% for item in factura_import_logs %}
-          {% set status_value = item.status or "-" %}
-          {% set source_value = item.source or "-" %}
-          {% set status_class = "pending" %}
-          {% if status_value == "done" %}
-            {% set status_class = "done" %}
-          {% elif status_value == "processing" %}
-            {% set status_class = "processing" %}
-          {% elif status_value == "failed" %}
-            {% set status_class = "failed" %}
-          {% endif %}
-          {% set status_label = "pendiente" %}
-          {% if status_value == "done" %}
-            {% set status_label = "finalizada" %}
-          {% elif status_value == "processing" %}
-            {% set status_label = "procesando" %}
-          {% elif status_value == "failed" %}
-            {% set status_label = "fallida" %}
-          {% endif %}
-          {% set source_label = "PDF" %}
-          {% if source_value == "manual" %}
-            {% set source_label = "Manual" %}
-          {% elif source_value == "rpa" %}
-            {% set source_label = "RPA" %}
-          {% elif source_value == "-" %}
-            {% set source_label = "-" %}
-          {% endif %}
-          <div class="table__row table__row--imports">
-            <span>{{ item.created_at_label or (item.created_at.strftime("%d/%m/%Y %H:%M") if item.created_at else "-") }}</span>
-            <span>{{ item.monotributista.razon_social if item.monotributista else "-" }}</span>
-            <span>{{ source_label }}</span>
-            <span class="status-pill status--{{ status_class }}">{{ status_label }}</span>
-            <span>{{ item.result_message or item.error or "-" }}</span>
-          </div>
-          {% endfor %}
-        {% else %}
-          <div class="table__row table__row--imports">
-            <span>Sin importaciones registradas.</span>
-            <span></span>
-            <span></span>
-            <span></span>
-            <span></span>
-          </div>
-        {% endif %}
       </div>
     </div>
   </div>
@@ -953,6 +1051,42 @@
   </div>
 </div>
 
+{% if can_manage_users %}
+<div class="modal" data-modal="usuario">
+  <div class="modal__content">
+    <div class="modal__header">
+      <h3>Nuevo usuario</h3>
+      <button class="modal__close" type="button" data-close>&times;</button>
+    </div>
+    <form class="panel__form" method="post" action="{{ url_for('main.create_usuario') }}" data-confirm="Confirmar creacion del usuario?">
+      <div class="form-grid form-grid--stack">
+        <label class="field">
+          Usuario
+          <input type="text" name="username" required>
+        </label>
+        <label class="field">
+          Nombre completo
+          <input type="text" name="nombre">
+        </label>
+        <label class="field">
+          Contrasena
+          <input type="password" name="password" required>
+        </label>
+        <label class="field">
+          Rol
+          <select name="role" required>
+            <option value="visor">Visor</option>
+            <option value="contador">Contador</option>
+            <option value="admin">Administrador</option>
+          </select>
+        </label>
+      </div>
+      <button class="primary" type="submit">Crear usuario</button>
+    </form>
+  </div>
+</div>
+{% endif %}
+
 <script>
   const tabs = document.querySelectorAll(".tab");
   const panels = document.querySelectorAll(".tabs__panel");
@@ -1097,6 +1231,33 @@
       });
     }
     updateFileState();
+  }
+
+  const monoCsvInput = document.querySelector("[data-modal='monotributistas-import'] input[name='monotributistas_csv']");
+  const monoCsvList = document.querySelector("[data-mono-file-list]");
+  const updateMonoCsvState = () => {
+    if (!monoCsvList || !monoCsvInput) {
+      return;
+    }
+    monoCsvList.innerHTML = "";
+    const hasFile = monoCsvInput.files && monoCsvInput.files.length > 0;
+    if (!hasFile) {
+      const empty = document.createElement("span");
+      empty.className = "file-empty";
+      empty.textContent = "Sin archivo";
+      monoCsvList.appendChild(empty);
+      return;
+    }
+    const file = monoCsvInput.files[0];
+    const name = document.createElement("span");
+    name.className = "file-item__name";
+    name.textContent = file.name;
+    monoCsvList.appendChild(name);
+  };
+
+  if (monoCsvInput) {
+    monoCsvInput.addEventListener("change", updateMonoCsvState);
+    updateMonoCsvState();
   }
 
   const searchableSelectRegistry = [];
@@ -1367,8 +1528,53 @@
     const searchInput = document.getElementById("monoSearch");
     const categoriaSelect = document.getElementById("monoCategoria");
     const ordenSelect = document.getElementById("monoOrden");
+    const paginationTop = document.querySelector("[data-pagination='monotributistas-top']");
+    const paginationBottom = document.querySelector("[data-pagination='monotributistas-bottom']");
     const filterButtons = Array.from(document.querySelectorAll("[data-mono-filter]"));
+    const pageSize = 10;
+    let currentPage = 1;
     let activeMonoFilter = "";
+
+    const updateMonoPaginationButtons = (totalPages) => {
+      [paginationTop, paginationBottom].forEach((container) => {
+        if (!container) {
+          return;
+        }
+        const prev = container.querySelector("[data-page='prev']");
+        const next = container.querySelector("[data-page='next']");
+        const info = container.querySelector("[data-page-info]");
+        if (prev) {
+          prev.disabled = currentPage <= 1;
+        }
+        if (next) {
+          next.disabled = currentPage >= totalPages;
+        }
+        if (info) {
+          info.textContent = `Pagina ${currentPage} de ${totalPages}`;
+        }
+      });
+    };
+
+    const renderMonoPage = (filtered) => {
+      const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+      if (currentPage > totalPages) {
+        currentPage = totalPages;
+      }
+      const start = (currentPage - 1) * pageSize;
+      const pageRows = filtered.slice(start, start + pageSize);
+
+      rows.forEach((row) => {
+        row.style.display = "none";
+      });
+
+      pageRows.forEach((row) => {
+        row.style.display = "";
+        monoTable.appendChild(row);
+      });
+
+      monoTable.prepend(headerRow);
+      updateMonoPaginationButtons(totalPages);
+    };
 
     const setActiveMonoFilter = (value) => {
       activeMonoFilter = value || "";
@@ -1379,7 +1585,7 @@
       });
     };
 
-    const applyMonoFilters = () => {
+    const applyMonoFilters = (resetPage = false) => {
       const query = (searchInput.value || "").toLowerCase().trim();
       const categoria = categoriaSelect.value;
       const orden = ordenSelect.value;
@@ -1396,26 +1602,21 @@
         razon_desc: (a, b) => b.dataset.razon.localeCompare(a.dataset.razon),
         categoria_asc: (a, b) => a.dataset.categoria.localeCompare(b.dataset.categoria),
       };
-
+      
       filtered.sort(sorters[orden] || sorters.razon_asc);
 
-      rows.forEach((row) => {
-        row.style.display = "none";
-      });
+      if (resetPage) {
+        currentPage = 1;
+      }
 
-      filtered.forEach((row) => {
-        row.style.display = "";
-        monoTable.appendChild(row);
-      });
-
-      monoTable.prepend(headerRow);
+      renderMonoPage(filtered);
     };
 
     ["input", "change"].forEach((eventName) => {
-      searchInput.addEventListener(eventName, applyMonoFilters);
+      searchInput.addEventListener(eventName, () => applyMonoFilters(true));
     });
-    categoriaSelect.addEventListener("change", applyMonoFilters);
-    ordenSelect.addEventListener("change", applyMonoFilters);
+    categoriaSelect.addEventListener("change", () => applyMonoFilters(true));
+    ordenSelect.addEventListener("change", () => applyMonoFilters(true));
 
     filterButtons.forEach((button) => {
       button.addEventListener("click", () => {
@@ -1428,8 +1629,30 @@
             monoTab.click();
           }
         }
-        applyMonoFilters();
+        applyMonoFilters(true);
       });
+    });
+
+    [paginationTop, paginationBottom].forEach((container) => {
+      if (!container) {
+        return;
+      }
+      const prev = container.querySelector("[data-page='prev']");
+      const next = container.querySelector("[data-page='next']");
+      if (prev) {
+        prev.addEventListener("click", () => {
+          if (currentPage > 1) {
+            currentPage -= 1;
+            applyMonoFilters(false);
+          }
+        });
+      }
+      if (next) {
+        next.addEventListener("click", () => {
+          currentPage += 1;
+          applyMonoFilters(false);
+        });
+      }
     });
 
     resetMonoFilters = () => {
@@ -1437,10 +1660,10 @@
       categoriaSelect.value = "";
       ordenSelect.value = "razon_asc";
       setActiveMonoFilter("");
-      applyMonoFilters();
+      applyMonoFilters(true);
     };
 
-    applyMonoFilters();
+    applyMonoFilters(true);
   }
 
   const facturaTable = document.querySelector("#facturas .table");
@@ -1766,6 +1989,21 @@
     }
   };
 
+  const resetMonotributistasImportModal = () => {
+    const modal = document.querySelector("[data-modal='monotributistas-import']");
+    if (!modal) {
+      return;
+    }
+    const form = modal.querySelector("form");
+    if (form) {
+      form.reset();
+    }
+    if (monoCsvInput) {
+      monoCsvInput.value = "";
+    }
+    updateMonoCsvState();
+  };
+
   const closeModal = (modal) => {
     if (!modal) {
       updateBodyScroll();
@@ -1777,6 +2015,9 @@
     }
     if (modal.dataset.modal === "rpa") {
       resetRpaModal();
+    }
+    if (modal.dataset.modal === "monotributistas-import") {
+      resetMonotributistasImportModal();
     }
     if (window.__airPickerRegistry) {
       window.__airPickerRegistry.forEach(({ picker }) => {
@@ -1862,58 +2103,90 @@
     return `${day}/${month}/${year} ${hours}:${minutes}`;
   };
 
+  let importsAllItems = [];
+  let importsActiveFilter = "all";
+
+  const statusMap = (raw) => {
+    const s = raw === "failed_viewed" ? "failed" : (raw || "pending");
+    return {
+      key: s,
+      cls: s === "done" ? "done" : s === "processing" ? "processing" : s === "failed" ? "failed" : "pending",
+      label: s === "done" ? "finalizada" : s === "processing" ? "procesando" : s === "failed" ? "fallida" : "pendiente",
+    };
+  };
+
+  const sourceLabel = (s) =>
+    s === "manual" ? "Manual" : s === "rpa" ? "RPA" : s && s !== "-" ? "PDF" : "-";
+
   const renderImportRows = (items) => {
     if (!importsBody) {
       return;
     }
-    if (!items.length) {
+    const filtered = importsActiveFilter === "all"
+      ? items
+      : items.filter((item) => statusMap(item.status).key === importsActiveFilter);
+
+    if (!filtered.length) {
+      const msg = importsActiveFilter === "all"
+        ? "Sin importaciones registradas."
+        : "No hay importaciones con este estado.";
       importsBody.innerHTML = `
         <div class="table__row table__row--imports">
-          <span>Sin importaciones registradas.</span>
-          <span></span>
-          <span></span>
-          <span></span>
-          <span></span>
-        </div>
-      `;
+          <span>${msg}</span>
+          <span></span><span></span><span></span><span></span>
+        </div>`;
       return;
     }
-    importsBody.innerHTML = items
+    importsBody.innerHTML = filtered
       .map((item) => {
-        const status = item.status === "failed_viewed" ? "failed" : item.status;
-        const statusClass = status === "done"
-          ? "done"
-          : status === "processing"
-            ? "processing"
-            : status === "failed"
-              ? "failed"
-              : "pending";
-        const statusLabel = status === "done"
-          ? "finalizada"
-          : status === "processing"
-            ? "procesando"
-            : status === "failed"
-              ? "fallida"
-              : "pendiente";
-        const sourceLabel = item.source === "manual"
-          ? "Manual"
-          : item.source === "rpa"
-            ? "RPA"
-            : item.source
-              ? "PDF"
-              : "-";
+        const st = statusMap(item.status);
         return `
           <div class="table__row table__row--imports">
             <span>${formatImportDate(item.created_at)}</span>
             <span>${item.monotributista || "-"}</span>
-            <span>${sourceLabel}</span>
-            <span class="status-pill status--${statusClass}">${statusLabel}</span>
-            <span>${item.result || "-"}</span>
-          </div>
-        `;
+            <span>${sourceLabel(item.source)}</span>
+            <span class="status-pill status--${st.cls}">${st.label}</span>
+            <span class="imports-result">${item.result || "-"}</span>
+          </div>`;
       })
       .join("");
   };
+
+  const updateProgress = (counts, hasActive) => {
+    const progressEl = document.querySelector("[data-imports-progress]");
+    const isActive = typeof hasActive === "boolean"
+      ? hasActive
+      : ((counts.pending || 0) + (counts.processing || 0) > 0);
+    if (progressEl) {
+      progressEl.style.display = isActive ? "" : "none";
+    }
+    if (!isActive) {
+      return;
+    }
+    const total = (counts.done || 0) + (counts.failed || 0) + (counts.processing || 0) + (counts.pending || 0);
+    const pct = (n) => total ? `${((n / total) * 100).toFixed(1)}%` : "0";
+    document.querySelectorAll("[data-progress]").forEach((seg) => {
+      const key = seg.dataset.progress;
+      seg.style.width = pct(counts[key] || 0);
+    });
+    const labels = { done: "finalizadas", failed: "fallidas", processing: "procesando", pending: "pendientes" };
+    document.querySelectorAll("[data-count]").forEach((el) => {
+      const key = el.dataset.count;
+      el.textContent = `${counts[key] || 0} ${labels[key]}`;
+    });
+  };
+
+  const filtersContainer = document.querySelector("[data-imports-filters]");
+  if (filtersContainer) {
+    filtersContainer.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-filter]");
+      if (!btn) return;
+      importsActiveFilter = btn.dataset.filter;
+      filtersContainer.querySelectorAll(".imports-filter").forEach((b) => b.classList.remove("is-active"));
+      btn.classList.add("is-active");
+      renderImportRows(importsAllItems);
+    });
+  }
 
   const fetchImports = async () => {
     try {
@@ -1924,8 +2197,14 @@
         return;
       }
       const data = await response.json();
-      if (Array.isArray(data)) {
-        renderImportRows(data);
+      if (data && data.items) {
+        importsAllItems = data.items;
+        const counts = data.counts || {};
+        const hasActive = typeof data.has_active === "boolean"
+          ? data.has_active
+          : ((counts.pending || 0) + (counts.processing || 0)) > 0;
+        updateProgress(counts, hasActive);
+        renderImportRows(data.items);
       }
     } catch (error) {
       // Ignore polling errors.

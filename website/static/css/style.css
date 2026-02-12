@@ -101,6 +101,92 @@ body {
   margin-left: 12px;
 }
 
+.topbar__user {
+  font-size: 0.85rem;
+  color: var(--navy-40);
+  font-weight: 500;
+}
+
+.user-dropdown {
+  position: relative;
+}
+
+.user-dropdown__trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  background: none;
+  border: none;
+  color: var(--blue);
+  font: inherit;
+  padding: 6px 10px;
+  border-radius: 6px;
+}
+
+.user-dropdown__trigger:hover {
+  background: rgba(83, 175, 192, 0.16);
+}
+
+.user-dropdown__trigger:focus-visible {
+  outline: 2px solid var(--sky);
+  outline-offset: 2px;
+}
+
+.user-dropdown__icon {
+  flex-shrink: 0;
+}
+
+.user-dropdown__caret {
+  flex-shrink: 0;
+  transition: transform 0.15s;
+}
+
+.user-dropdown__menu.is-open ~ .user-dropdown__trigger .user-dropdown__caret,
+.user-dropdown__trigger:focus .user-dropdown__caret {
+  transform: rotate(180deg);
+}
+
+.user-dropdown__menu {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  min-width: 180px;
+  background: var(--white);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  padding: 4px 0;
+  z-index: 100;
+}
+
+.user-dropdown__menu.is-open {
+  display: block;
+}
+
+.user-dropdown__item {
+  display: block;
+  padding: 8px 16px;
+  color: var(--blue);
+  text-decoration: none;
+  font-size: 0.88rem;
+  white-space: nowrap;
+}
+
+.user-dropdown__item:hover {
+  background: rgba(83, 175, 192, 0.16);
+}
+
+.user-dropdown__item--danger {
+  color: #c0392b;
+}
+
+.user-dropdown__divider {
+  height: 1px;
+  background: rgba(36, 44, 79, 0.16);
+  margin: 4px 0;
+}
+
 .ghost-link {
   color: var(--navy-40);
   text-decoration: none;
@@ -350,7 +436,8 @@ button.stat:focus-visible {
   min-width: 0;
 }
 
-.facturas__toolbar {
+.facturas__toolbar,
+.monotributistas__toolbar {
   display: flex;
   gap: 12px;
   align-items: flex-end;
@@ -842,6 +929,10 @@ button.stat:focus-visible {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.table__row--usuarios {
+  grid-template-columns: 1fr 1.5fr 1fr 0.8fr 0.8fr;
+}
+
 .table__row--imports {
   grid-template-columns: 1.2fr 1.4fr 0.7fr 0.8fr 2fr;
 }
@@ -887,6 +978,111 @@ input[type="date"][data-air-picker="true"]::-webkit-calendar-picker-indicator {
 .status--pending {
   background: #fff5d6;
   color: #7a5b00;
+}
+
+.imports-progress {
+  margin-bottom: 12px;
+}
+
+.imports-progress__bar {
+  display: flex;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #eee;
+}
+
+.imports-progress__segment {
+  transition: width 0.4s ease;
+}
+
+.imports-progress__segment--done {
+  background: #48bb78;
+}
+
+.imports-progress__segment--failed {
+  background: #e53e3e;
+}
+
+.imports-progress__segment--processing {
+  background: var(--blue);
+}
+
+.imports-progress__segment--pending {
+  background: #ecc94b;
+}
+
+.imports-progress__legend {
+  display: flex;
+  gap: 16px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.imports-progress__stat {
+  font-size: 0.78rem;
+  color: var(--navy-40);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.imports-progress__stat::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.imports-progress__stat--done::before {
+  background: #48bb78;
+}
+
+.imports-progress__stat--failed::before {
+  background: #e53e3e;
+}
+
+.imports-progress__stat--processing::before {
+  background: var(--blue);
+}
+
+.imports-progress__stat--pending::before {
+  background: #ecc94b;
+}
+
+.imports-filters {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.imports-filter {
+  padding: 4px 12px;
+  border: 1px solid #ddd;
+  border-radius: 16px;
+  background: var(--white);
+  color: var(--navy-40);
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.imports-filter:hover {
+  border-color: var(--navy-40);
+}
+
+.imports-filter.is-active {
+  background: var(--navy-90);
+  color: var(--white);
+  border-color: var(--navy-90);
+}
+
+.imports-result {
+  word-break: break-word;
+  font-size: 0.82rem;
+  line-height: 1.3;
 }
 
 .table__row--topes {
@@ -1399,6 +1595,17 @@ input[type="date"][data-air-picker="true"]::-webkit-calendar-picker-indicator {
 
 .modal--wide .modal__content {
   width: min(980px, 100%);
+  height: calc(100vh - 120px);
+  display: flex;
+  flex-direction: column;
+}
+
+.modal--wide .table {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  align-content: start;
+  grid-auto-rows: min-content;
 }
 
 .modal__header {
@@ -1728,7 +1935,8 @@ input[type="date"][data-air-picker="true"]::-webkit-calendar-picker-indicator {
   .table__row--mono,
   .table__row--facturas,
   .table__row--config,
-  .table__row--topes {
+  .table__row--topes,
+  .table__row--usuarios {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -1773,12 +1981,14 @@ input[type="date"][data-air-picker="true"]::-webkit-calendar-picker-indicator {
     align-items: flex-start;
   }
 
-  .facturas__toolbar {
+  .facturas__toolbar,
+  .monotributistas__toolbar {
     flex-direction: column;
     align-items: stretch;
   }
 
-  .facturas__toolbar .pagination--top {
+  .facturas__toolbar .pagination--top,
+  .monotributistas__toolbar .pagination--top {
     margin-left: 0;
     align-self: flex-start;
   }

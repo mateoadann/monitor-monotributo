@@ -14,6 +14,28 @@ class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
+    role = db.Column(db.String(20), nullable=False, default="visor")
+    is_active_user = db.Column(db.Boolean, nullable=False, default=True)
+    nombre = db.Column(db.String(160), nullable=False, default="")
+
+    ROLES = ("admin", "contador", "visor")
+    ROLE_LABELS = {"admin": "Administrador", "contador": "Contador", "visor": "Visor"}
+
+    @property
+    def is_active(self):
+        return self.is_active_user
+
+    def can_edit_data(self) -> bool:
+        return self.role in ("admin", "contador")
+
+    def can_manage_config(self) -> bool:
+        return self.role == "admin"
+
+    def can_manage_users(self) -> bool:
+        return self.role == "admin"
+
+    def can_run_rpa(self) -> bool:
+        return self.role in ("admin", "contador")
 
 
 class Categoria(db.Model):
@@ -90,6 +112,7 @@ class Factura(db.Model):
 
 class FacturaImport(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    batch_id = db.Column(db.String(32), index=True)
     created_at = db.Column(
         db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
     )
@@ -124,9 +147,18 @@ def get_user_by_id(user_id: str) -> User | None:
 
 
 def create_admin_if_missing() -> None:
-    if User.query.filter_by(username="admin").first():
+    admin = User.query.filter_by(username="admin").first()
+    if admin:
+        if admin.role != "admin":
+            admin.role = "admin"
+            db.session.commit()
         return
-    user = User(username="admin", password_hash=generate_password_hash("admin"))
+    user = User(
+        username="admin",
+        password_hash=generate_password_hash("admin"),
+        role="admin",
+        nombre="Administrador",
+    )
     db.session.add(user)
     db.session.commit()
 

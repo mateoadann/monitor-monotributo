@@ -1,7 +1,6 @@
+from datetime import date, datetime, timezone
 from decimal import Decimal
-
-from datetime import date
-from decimal import Decimal
+import io
 
 import pytest
 from website.models import Categoria, CategoriaTope, Factura, FacturaImport, Monotributista, Vigencia, db
@@ -63,6 +62,87 @@ def test_create_monotributista_success(client, app):
         monotributistas = Monotributista.query.all()
         assert len(monotributistas) == 1
         assert monotributistas[0].razon_social == "Demo SRL"
+
+
+def test_import_monotributistas_csv_crea_y_omite_existentes(client, app):
+    with app.app_context():
+        categoria_a = Categoria(nombre="A", orden=1, tope_facturacion=Decimal("0.00"))
+        categoria_b = Categoria(nombre="B", orden=2, tope_facturacion=Decimal("0.00"))
+        db.session.add_all([categoria_a, categoria_b])
+        db.session.flush()
+        existente = Monotributista(
+            razon_social="Existente SA",
+            cuit="20304050607",
+            clave_fiscal="clave",
+            categoria_actual_id=categoria_a.id,
+            categoria_corresponde_id=categoria_a.id,
+        )
+        db.session.add(existente)
+        db.session.commit()
+
+    login(client)
+    csv_content = "\n".join(
+        [
+            "razon_social,cuit,clave_fiscal,categoria_actual",
+            "Existente SA,20304050607,clave,A",
+            "Nuevo SRL,20304050608,clave2,B",
+            "Sin Categoria,20304050609,clave3,Z",
+        ]
+    )
+    response = client.post(
+        "/monotributistas/import-csv",
+        data={
+            "monotributistas_csv": (
+                io.BytesIO(csv_content.encode("utf-8")),
+                "monotributistas.csv",
+            ),
+        },
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+
+    assert b"Importacion finalizada" in response.data
+    assert b"omitidos_existentes=1" in response.data
+    assert b"errores=1" in response.data
+    with app.app_context():
+        monotributistas = Monotributista.query.order_by(Monotributista.cuit).all()
+        assert len(monotributistas) == 2
+        nuevo = Monotributista.query.filter_by(cuit="20304050608").first()
+        assert nuevo is not None
+        assert nuevo.razon_social == "Nuevo SRL"
+        assert nuevo.categoria_actual.nombre == "B"
+
+
+def test_import_monotributistas_csv_dry_run_no_persiste(client, app):
+    with app.app_context():
+        categoria = Categoria(nombre="A", orden=1, tope_facturacion=Decimal("0.00"))
+        db.session.add(categoria)
+        db.session.commit()
+
+    login(client)
+    csv_content = "\n".join(
+        [
+            "razon_social,cuit,clave_fiscal,categoria_actual",
+            "Demo Dry,20304050610,clave,A",
+        ]
+    )
+    response = client.post(
+        "/monotributistas/import-csv",
+        data={
+            "dry_run": "1",
+            "monotributistas_csv": (
+                io.BytesIO(csv_content.encode("utf-8")),
+                "dry.csv",
+            ),
+        },
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+
+    assert b"Simulacion finalizada" in response.data
+    assert b"creados=1" in response.data
+    with app.app_context():
+        assert Monotributista.query.filter_by(cuit="20304050610").first() is None
 
 
 def test_create_factura_nc_guarda_importe_negativo(client, app):
@@ -410,3 +490,126 @@ def test_pdf_import_factura_e_exige_exchange_rate(monkeypatch, app):
             failed.result_message
             == "Faltan importe_total_usd o exchange_rate para factura E"
         )
+
+
+def test_factura_imports_counts_usa_lote_activo_mas_reciente(client, app):
+    with app.app_context():
+        categoria = create_categoria()
+        monotributista = Monotributista(
+            razon_social="Demo SRL",
+            cuit="20304050607",
+            clave_fiscal="clave",
+            categoria_actual_id=categoria.id,
+            categoria_corresponde_id=categoria.id,
+        )
+        db.session.add(monotributista)
+        db.session.commit()
+
+        base = datetime(2026, 2, 12, 9, 0, tzinfo=timezone.utc)
+        db.session.add_all(
+            [
+                FacturaImport(
+                    monotributista_id=monotributista.id,
+                    batch_id="batch-old",
+                    status="pending",
+                    pdf_path="/tmp/old-pending.pdf",
+                    source="upload",
+                    created_at=base,
+                ),
+                FacturaImport(
+                    monotributista_id=monotributista.id,
+                    batch_id="batch-new",
+                    status="done",
+                    pdf_path="/tmp/new-done.pdf",
+                    source="upload",
+                    created_at=base.replace(minute=2),
+                ),
+                FacturaImport(
+                    monotributista_id=monotributista.id,
+                    batch_id="batch-new",
+                    status="failed_viewed",
+                    pdf_path="/tmp/new-failed.pdf",
+                    source="upload",
+                    created_at=base.replace(minute=3),
+                ),
+                FacturaImport(
+                    monotributista_id=monotributista.id,
+                    batch_id="batch-new",
+                    status="pending",
+                    pdf_path="/tmp/new-pending.pdf",
+                    source="upload",
+                    created_at=base.replace(minute=4),
+                ),
+                FacturaImport(
+                    monotributista_id=monotributista.id,
+                    batch_id="batch-new",
+                    status="processing",
+                    pdf_path="/tmp/new-processing.pdf",
+                    source="upload",
+                    created_at=base.replace(minute=5),
+                ),
+            ]
+        )
+        db.session.commit()
+
+    login(client)
+    response = client.get("/facturas/imports")
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["has_active"] is True
+    assert payload["active_batch_id"] == "batch-new"
+    assert payload["counts"] == {
+        "pending": 1,
+        "processing": 1,
+        "done": 1,
+        "failed": 1,
+    }
+
+
+def test_factura_imports_counts_en_cero_sin_lote_activo(client, app):
+    with app.app_context():
+        categoria = create_categoria()
+        monotributista = Monotributista(
+            razon_social="Demo SRL",
+            cuit="20304050607",
+            clave_fiscal="clave",
+            categoria_actual_id=categoria.id,
+            categoria_corresponde_id=categoria.id,
+        )
+        db.session.add(monotributista)
+        db.session.commit()
+
+        db.session.add_all(
+            [
+                FacturaImport(
+                    monotributista_id=monotributista.id,
+                    batch_id="batch-closed",
+                    status="done",
+                    pdf_path="/tmp/closed-done.pdf",
+                    source="upload",
+                ),
+                FacturaImport(
+                    monotributista_id=monotributista.id,
+                    batch_id="batch-closed",
+                    status="failed",
+                    pdf_path="/tmp/closed-failed.pdf",
+                    source="upload",
+                ),
+            ]
+        )
+        db.session.commit()
+
+    login(client)
+    response = client.get("/facturas/imports")
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["has_active"] is False
+    assert payload["active_batch_id"] is None
+    assert payload["counts"] == {
+        "pending": 0,
+        "processing": 0,
+        "done": 0,
+        "failed": 0,
+    }
