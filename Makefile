@@ -1,98 +1,189 @@
-.PHONY: help up up-build down down-v logs-web logs-worker shell test test-quiet test-file
+# ──────────────────────────────────────────────
+# ENV=dev (default) | ENV=prod
+# Uso: make up              → dev
+#      make up ENV=prod      → prod
+# ──────────────────────────────────────────────
+ENV ?= dev
+DC := docker compose -f docker-compose.yml -f docker-compose.$(ENV).yml
+
+.PHONY: help up up-build down down-v logs logs-web logs-worker shell
 .PHONY: restart-web restart-all
-.PHONY: psql redis rpa migrate-concepto storage-check test-db test-views-clean
+.PHONY: test test-quiet test-file test-views-clean test-db
+.PHONY: psql redis rpa
+.PHONY: migrate-concepto migrate-import-batch storage-check
 .PHONY: vigencias-bootstrap vigencias-bootstrap-dry
+.PHONY: proxy-net config
+.PHONY: prod prod-build prod-down prod-logs prod-ps prod-restart bootstrap-prod
 
 help:
-	@echo "Targets disponibles:"
+	@echo "Uso: make <target> [ENV=dev|prod]  (default: dev)"
+	@echo ""
+	@echo "  Servicios:"
 	@echo "  up                Levanta servicios (sin build)"
 	@echo "  up-build          Levanta servicios con build"
 	@echo "  restart-web       Reinicia solo el servicio web"
 	@echo "  restart-all       Reinicia todos los servicios"
 	@echo "  down              Baja servicios"
 	@echo "  down-v            Baja servicios y borra volumenes"
+	@echo ""
+	@echo "  Logs y shell:"
+	@echo "  logs              Logs de todos los servicios"
 	@echo "  logs-web          Logs del contenedor web"
 	@echo "  logs-worker       Logs del worker"
 	@echo "  shell             Shell en el contenedor web"
+	@echo ""
+	@echo "  Tests:"
 	@echo "  test              Ejecuta pytest"
 	@echo "  test-quiet        Ejecuta pytest -q"
 	@echo "  test-file FILE=   Ejecuta pytest en un archivo"
 	@echo "  test-views-clean  Build sin cache y corre test_views"
 	@echo "  test-db           Crea la DB de tests"
+	@echo ""
+	@echo "  BD y herramientas:"
 	@echo "  psql              Abre psql en Postgres"
 	@echo "  redis             Abre redis-cli"
 	@echo "  rpa               Ejecuta Playwright (headless)"
-	@echo "  migrate-concepto  Migra factura.concepto a TEXT"
-	@echo "  vigencias-bootstrap-dry  Simula bootstrap vigencias"
-	@echo "  vigencias-bootstrap      Aplica bootstrap vigencias"
+	@echo ""
+	@echo "  Migraciones:"
+	@echo "  migrate-concepto        Migra factura.concepto a TEXT"
+	@echo "  migrate-import-batch    Migra factura_import.batch_id"
+	@echo "  vigencias-bootstrap-dry Simula bootstrap vigencias"
+	@echo "  vigencias-bootstrap     Aplica bootstrap vigencias"
+	@echo ""
+	@echo "  Produccion:"
+	@echo "  prod              Levanta stack prod"
+	@echo "  prod-build        Build y levanta stack prod"
+	@echo "  prod-down         Baja stack prod"
+	@echo "  prod-logs         Logs de prod"
+	@echo "  prod-ps           Estado del stack prod"
+	@echo "  prod-restart      Reinicia servicios prod"
+	@echo "  bootstrap-prod    Setup inicial prod (build + migrate + seed)"
+	@echo ""
+	@echo "  Infra:"
+	@echo "  config            Muestra la config resultante"
+	@echo "  proxy-net         Crea la red proxy_net (una sola vez)"
 	@echo "  storage-check     Verifica uploads/downloads vacios"
 
+# ── Servicios ──
+
 up:
-	docker compose up -d
+	$(DC) up -d
 
 up-build:
-	docker compose up -d --build
+	$(DC) up -d --build
 
 restart-web:
-	docker compose restart web
+	$(DC) restart web
 
 restart-all:
-	docker compose restart
+	$(DC) restart
 
 down:
-	docker compose down
+	$(DC) down
 
 down-v:
-	docker compose down -v
+	$(DC) down -v
+
+# ── Logs y shell ──
+
+logs:
+	$(DC) logs -f
 
 logs-web:
-	docker compose logs -f web
+	$(DC) logs -f web
 
 logs-worker:
-	docker compose logs -f worker
+	$(DC) logs -f worker
 
 shell:
-	docker compose exec web bash
+	$(DC) exec web bash
+
+# ── Tests ──
 
 test:
-	$(MAKE) test-db
-	docker compose exec -T web python -m pytest
+	$(MAKE) test-db ENV=$(ENV)
+	$(DC) exec -T web python -m pytest
 
 test-quiet:
-	$(MAKE) test-db
-	docker compose exec -T web python -m pytest -q
+	$(MAKE) test-db ENV=$(ENV)
+	$(DC) exec -T web python -m pytest -q
 
 test-file:
 	@test -n "$(FILE)" || (echo "Falta FILE=tests/test_views.py" && exit 1)
-	$(MAKE) test-db
-	docker compose exec -T web python -m pytest $(FILE)
+	$(MAKE) test-db ENV=$(ENV)
+	$(DC) exec -T web python -m pytest $(FILE)
 
 test-views-clean:
-	docker compose build --no-cache web
-	docker compose up -d
-	$(MAKE) test-db
-	docker compose exec -T web python -m pytest tests/test_views.py -q
+	$(DC) build --no-cache web
+	$(DC) up -d
+	$(MAKE) test-db ENV=$(ENV)
+	$(DC) exec -T web python -m pytest tests/test_views.py -q
 
 test-db:
-	docker compose exec -T postgres psql -U monitor -d postgres -c "CREATE DATABASE monitor_test;" || true
+	$(DC) exec -T postgres psql -U monitor -d postgres -c "CREATE DATABASE monitor_test;" || true
+
+# ── BD y herramientas ──
 
 psql:
-	docker compose exec postgres psql -U monitor -d monitor
+	$(DC) exec postgres psql -U monitor -d monitor
 
 redis:
-	docker compose exec redis redis-cli
+	$(DC) exec redis redis-cli
 
 rpa:
-	docker compose exec -e PLAYWRIGHT_HEADLESS=1 -e PLAYWRIGHT_TYPE_DELAY=80 web python playwright/descargar-pdf.py
+	$(DC) exec -e PLAYWRIGHT_HEADLESS=1 -e PLAYWRIGHT_TYPE_DELAY=80 web python playwright/descargar-pdf.py
+
+# ── Migraciones ──
 
 migrate-concepto:
-	docker compose exec web python scripts/migrate_factura_concepto_text.py
+	$(DC) exec web python scripts/migrate_factura_concepto_text.py
 
-storage-check:
-	docker compose exec web python check_storage_empty.py
+migrate-import-batch:
+	$(DC) exec web python scripts/migrate_factura_import_batch_id.py
 
 vigencias-bootstrap-dry:
-	docker compose exec -T web python scripts/bootstrap_vigencias_prod.py
+	$(DC) exec -T web python scripts/bootstrap_vigencias_prod.py
 
 vigencias-bootstrap:
-	docker compose exec -T web python scripts/bootstrap_vigencias_prod.py --apply
+	$(DC) exec -T web python scripts/bootstrap_vigencias_prod.py --apply
+
+# ── Infra ──
+
+storage-check:
+	$(DC) exec web python check_storage_empty.py
+
+config:
+	$(DC) config
+
+proxy-net:
+	docker network create proxy_net
+
+# ── Produccion (atajos sin ENV=prod) ──
+
+DC_PROD := docker compose -f docker-compose.yml -f docker-compose.prod.yml
+
+prod:
+	$(DC_PROD) up -d
+
+prod-build:
+	$(DC_PROD) up -d --build
+
+prod-down:
+	$(DC_PROD) down
+
+prod-logs:
+	$(DC_PROD) logs -f
+
+prod-ps:
+	$(DC_PROD) ps
+
+prod-restart:
+	$(DC_PROD) restart
+
+bootstrap-prod:
+	$(DC_PROD) up -d --build
+	$(DC_PROD) exec -T postgres psql -U monitor -d postgres -c "CREATE DATABASE monitor_test;" || true
+	$(DC_PROD) exec -T web python scripts/bootstrap_vigencias_prod.py --apply
+	@echo ""
+	@echo "Bootstrap completo. Stack prod corriendo."
+	@echo "Configurar NPM apuntando a monitor_web:5000"

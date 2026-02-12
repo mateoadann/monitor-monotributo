@@ -1,0 +1,32 @@
+services:
+  web:
+    container_name: monitor_web
+    expose:
+      - "5000"
+    environment:
+      FLASK_DEBUG: "0"
+    restart: unless-stopped
+    networks:
+      - default
+      - proxy_net
+
+  worker:
+    restart: unless-stopped
+    networks:
+      - default
+
+  postgres:
+    restart: unless-stopped
+    networks:
+      - default
+
+  redis:
+    restart: unless-stopped
+    networks:
+      - default
+
+networks:
+  default:
+    driver: bridge
+  proxy_net:
+    external: true

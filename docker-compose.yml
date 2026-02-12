@@ -1,20 +1,21 @@
 services:
   web:
     build: .
-    ports:
-      - "5002:5000"
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql+psycopg2://monitor:monitor@postgres:5432/monitor
-      DATABASE_URL_TEST: postgresql+psycopg2://monitor:monitor@postgres:5432/monitor_test
-      SECRET_KEY: dev-change-me
+      DATABASE_URL: postgresql+psycopg2://${MONITOR_DB_USER:-monitor}:${MONITOR_DB_PASSWORD:-monitor}@postgres:5432/${MONITOR_DB_NAME:-monitor}
+      DATABASE_URL_TEST: postgresql+psycopg2://${MONITOR_DB_USER:-monitor}:${MONITOR_DB_PASSWORD:-monitor}@postgres:5432/${MONITOR_DB_NAME:-monitor}_test
+      SECRET_KEY: ${MONITOR_SECRET_KEY:-dev-change-me}
       REDIS_URL: redis://redis:6379/0
+      UPLOAD_FOLDER: /app/uploads
     volumes:
-      - ./uploads:/app/uploads
+      - uploads_data:/app/uploads
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   worker:
     build: .
@@ -22,26 +23,40 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql+psycopg2://monitor:monitor@postgres:5432/monitor
-      SECRET_KEY: dev-change-me
+      DATABASE_URL: postgresql+psycopg2://${MONITOR_DB_USER:-monitor}:${MONITOR_DB_PASSWORD:-monitor}@postgres:5432/${MONITOR_DB_NAME:-monitor}
+      SECRET_KEY: ${MONITOR_SECRET_KEY:-dev-change-me}
       REDIS_URL: redis://redis:6379/0
+      UPLOAD_FOLDER: /app/uploads
     volumes:
-      - ./uploads:/app/uploads
+      - uploads_data:/app/uploads
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   postgres:
     image: postgres:15-alpine
     environment:
-      POSTGRES_DB: monitor
-      POSTGRES_USER: monitor
-      POSTGRES_PASSWORD: monitor
+      POSTGRES_DB: ${MONITOR_DB_NAME:-monitor}
+      POSTGRES_USER: ${MONITOR_DB_USER:-monitor}
+      POSTGRES_PASSWORD: ${MONITOR_DB_PASSWORD:-monitor}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - monitor_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${MONITOR_DB_USER:-monitor}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
-  postgres_data:
+  monitor_postgres_data:
+  uploads_data:
