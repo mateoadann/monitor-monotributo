@@ -23,7 +23,6 @@ facturas_ejemplos
 docker-compose.dev.yml
 docker-compose.prod.yml
 README-deploy.md
-tests
 .pytest_cache
 .mypy_cache
 .ruff_cache
