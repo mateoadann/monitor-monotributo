@@ -10,11 +10,11 @@
     <form class="login__form" method="post">
       <label>
         Usuario
-        <input type="text" name="username" placeholder="admin" required>
+        <input type="text" name="username" required>
       </label>
       <label>
         Contrasena
-        <input type="password" name="password" placeholder="admin" required>
+        <input type="password" name="password" required>
       </label>
       {% if error %}
         <div class="alert">{{ error }}</div>
