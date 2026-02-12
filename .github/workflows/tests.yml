@@ -10,19 +10,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Prepare .env for docker compose
+      - name: Prepare .env for CI
         run: |
-          if [ -f .env.example ]; then
-            cp .env.example .env
-          else
-            touch .env
-          fi
+          echo "MONITOR_DB_USER=monitor" >> .env
+          echo "MONITOR_DB_PASSWORD=monitor_ci" >> .env
+          echo "MONITOR_DB_NAME=monitor" >> .env
+          echo "MONITOR_SECRET_KEY=ci-secret-key" >> .env
+          echo "ARCA_WEB=https://www.afip.gob.ar/landing/default.asp" >> .env
+          echo "PLAYWRIGHT_HEADLESS=1" >> .env
+          echo "RECORDING=FALSE" >> .env
 
       - name: Build web image
         run: docker compose build web
 
-      - name: Start postgres
-        run: docker compose up -d postgres
+      - name: Start services
+        run: docker compose up -d postgres redis
 
       - name: Wait for postgres
         run: |
@@ -32,10 +34,7 @@ jobs:
 
       - name: Create test database
         run: |
-          exists=$(docker compose exec -T postgres psql -U monitor -tc "SELECT 1 FROM pg_database WHERE datname='monitor_test';" | tr -d '[:space:]')
-          if [ "$exists" != "1" ]; then
-            docker compose exec -T postgres psql -U monitor -c "CREATE DATABASE monitor_test;"
-          fi
+          docker compose exec -T postgres psql -U monitor -c "CREATE DATABASE monitor_test;" || true
 
       - name: Run tests
-        run: docker compose run --rm -e DATABASE_URL_TEST=postgresql+psycopg2://monitor:monitor@postgres:5432/monitor_test web python -m pytest
+        run: docker compose run --rm web python -m pytest
