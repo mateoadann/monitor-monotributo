@@ -119,7 +119,9 @@ body {
   background: none;
   border: none;
   color: var(--blue);
-  font: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: 600;
   padding: 6px 10px;
   border-radius: 6px;
 }
@@ -579,6 +581,21 @@ button.stat:focus-visible {
   gap: 12px;
 }
 
+.rpa-collapse__actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.rpa-collapse__actions .field__search {
+  flex: 1;
+}
+
+.outline--sm {
+  padding: 6px 12px;
+  font-size: 0.8rem;
+}
+
 [data-rpa-section="categorias"] .checklist__item,
 [data-rpa-section="tipos"] .checklist__item {
   border: 1px solid #d8dce6;
@@ -661,6 +678,10 @@ button.stat:focus-visible {
   gap: 8px;
   font-size: 13px;
   color: var(--navy-40);
+}
+
+.checklist__item[hidden] {
+  display: none;
 }
 
 .field__search {

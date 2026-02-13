@@ -939,10 +939,13 @@
       <details class="rpa-collapse" data-rpa-section="monotributistas">
         <summary>Monotributistas</summary>
         <div class="rpa-collapse__body">
-          <input class="field__search" type="text" placeholder="Buscar razon social">
-          <div class="checklist checklist--scroll">
+          <div class="rpa-collapse__actions">
+            <input class="field__search" type="text" placeholder="Buscar razon social" data-rpa-monos-search>
+            <button class="outline outline--sm" type="button" data-rpa-clear-monos>Limpiar</button>
+          </div>
+          <div class="checklist checklist--scroll" data-rpa-monos-list>
             {% for item in monotributistas_select %}
-            <label class="checklist__item">
+            <label class="checklist__item" data-search="{{ item.razon_social | lower }}">
               <input type="checkbox" name="rpa_monotributistas" value="{{ item.id }}">
               {{ item.razon_social }}
             </label>
@@ -2303,6 +2306,24 @@
       input.addEventListener("change", updateRpaSections);
     });
     updateRpaSections();
+
+    const clearMonosBtn = rpaForm.querySelector("[data-rpa-clear-monos]");
+    if (clearMonosBtn) {
+      clearMonosBtn.addEventListener("click", () => {
+        setAllChecked(rpaMonotributistasInputs, false);
+      });
+    }
+
+    const rpaMonosSearch = rpaForm.querySelector("[data-rpa-monos-search]");
+    const rpaMonosItems = Array.from(rpaForm.querySelectorAll("[data-rpa-monos-list] [data-search]"));
+    if (rpaMonosSearch) {
+      rpaMonosSearch.addEventListener("input", () => {
+        const query = rpaMonosSearch.value.toLowerCase().trim();
+        rpaMonosItems.forEach((item) => {
+          item.hidden = query ? !item.dataset.search.includes(query) : false;
+        });
+      });
+    }
 
     rpaForm.addEventListener("submit", async (event) => {
       event.preventDefault();
