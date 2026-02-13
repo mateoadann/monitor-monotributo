@@ -5,6 +5,8 @@
 # ──────────────────────────────────────────────
 ENV ?= dev
 DC := docker compose -f docker-compose.yml -f docker-compose.$(ENV).yml
+COMPOSE_BASE = docker compose -f docker-compose.yml
+COMPOSE_DEV = docker compose -f docker-compose.yml -f docker-compose.dev.yml
 
 .PHONY: help up up-build down down-v logs logs-web logs-worker shell
 .PHONY: restart-web restart-all
@@ -14,6 +16,8 @@ DC := docker compose -f docker-compose.yml -f docker-compose.$(ENV).yml
 .PHONY: vigencias-bootstrap vigencias-bootstrap-dry
 .PHONY: proxy-net config
 .PHONY: prod prod-build prod-down prod-logs prod-ps prod-restart bootstrap-prod
+.PHONY: prod-up prod-up-build
+.PHONY: dev-up dev-up-build dev-down dev-logs-web dev-logs-worker dev-shell
 
 help:
 	@echo "Uso: make <target> [ENV=dev|prod]  (default: dev)"
@@ -25,6 +29,13 @@ help:
 	@echo "  restart-all       Reinicia todos los servicios"
 	@echo "  down              Baja servicios"
 	@echo "  down-v            Baja servicios y borra volumenes"
+	@echo ""
+	@echo "  dev-up            Levanta stack DEV (con puertos)"
+	@echo "  dev-up-build      Levanta stack DEV con build"
+	@echo "  dev-down          Baja stack DEV"
+	@echo "  dev-logs-web      Logs web en DEV"
+	@echo "  dev-logs-worker   Logs worker en DEV"
+	@echo "  dev-shell         Shell en web (DEV)"
 	@echo ""
 	@echo "  Logs y shell:"
 	@echo "  logs              Logs de todos los servicios"
@@ -52,7 +63,9 @@ help:
 	@echo ""
 	@echo "  Produccion:"
 	@echo "  prod              Levanta stack prod"
+	@echo "  prod-up           Alias de prod"
 	@echo "  prod-build        Build y levanta stack prod"
+	@echo "  prod-up-build     Alias de prod-build"
 	@echo "  prod-down         Baja stack prod"
 	@echo "  prod-logs         Logs de prod"
 	@echo "  prod-ps           Estado del stack prod"
@@ -165,7 +178,13 @@ DC_PROD := docker compose -f docker-compose.yml -f docker-compose.prod.yml
 prod:
 	$(DC_PROD) up -d
 
+prod-up:
+	$(DC_PROD) up -d
+
 prod-build:
+	$(DC_PROD) up -d --build
+
+prod-up-build:
 	$(DC_PROD) up -d --build
 
 prod-down:
@@ -187,3 +206,16 @@ bootstrap-prod:
 	@echo ""
 	@echo "Bootstrap completo. Stack prod corriendo."
 	@echo "Configurar NPM apuntando a monitor_web:5000"
+
+dev-up:
+	$(COMPOSE_DEV) up -d
+dev-up-build:
+	$(COMPOSE_DEV) up -d --build
+dev-down:
+	$(COMPOSE_DEV) down
+dev-logs-web:
+	$(COMPOSE_DEV) logs -f web
+dev-logs-worker:
+	$(COMPOSE_DEV) logs -f worker
+dev-shell:
+	$(COMPOSE_DEV) exec web bash
