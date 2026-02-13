@@ -1,7 +1,7 @@
 import os
 
 from flask import Flask, flash, redirect, url_for
-from flask_login import LoginManager
+from flask_login import LoginManager, current_user
 
 from website.models import create_admin_if_missing, db, seed_data
 
@@ -97,6 +97,14 @@ def create_app(init_db: bool = True):
     def forbidden(e):
         flash("No tienes permisos para realizar esta accion.", "error")
         return redirect(url_for("main.dashboard"))
+
+    @app.after_request
+    def set_no_cache(response):
+        if current_user.is_authenticated:
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+        return response
 
     if init_db:
         with app.app_context():
