@@ -25,12 +25,7 @@ from website.pdf_jobs import (
     process_factura_import,
 )
 
-CUIT = "20442030147"
-CLAVE_FISCAL = "vokqu0-qamqet"
-CUIT_LUCIANO = "20278955770"
-CLAVE_LUCIANO = "Luciano2208"
-FECHA_DESDE = "01/01/2025"
-FECHA_HASTA = "31/12/2025"
+
 TIPOS_COMPROBANTE = ["11", "12", "13", "15", "19", "20", "21"]
 SELECCIONAR_TIPO_COMPROBANTE = False
 TIPO_COMP_MAP = {
