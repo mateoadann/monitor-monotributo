@@ -1,6 +1,7 @@
 services:
   web:
     container_name: monitor_web
+    command: ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "1", "--threads", "4", "--timeout", "120", "main:app"]
     expose:
       - "5000"
     environment:
