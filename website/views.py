@@ -12,7 +12,7 @@ import uuid
 from flask import Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from flask_login import current_user, login_required
 from rq import Retry
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
@@ -1254,10 +1254,14 @@ def factura_imports():
             )
             counts[bucket] += 1
     historical_counts = {"pending": 0, "processing": 0, "done": 0, "failed": 0, "needs_review": 0}
-    for item in items:
-        status = item["status"]
+    rows = (
+        db.session.query(FacturaImport.status, func.count())
+        .group_by(FacturaImport.status)
+        .all()
+    )
+    for status, cnt in rows:
         bucket = status if status in historical_counts else "pending"
-        historical_counts[bucket] += 1
+        historical_counts[bucket] += cnt
     return jsonify(
         {
             "items": items,
