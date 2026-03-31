@@ -374,6 +374,7 @@ def build_calculo(
     categoria_actual = monotributista.categoria_actual
     exclusion = is_exclusion(total, topes)
     max_tope = max_tope_facturacion(topes)
+    tope_corresponde = None
     if exclusion:
         categoria_corresponde_label = "Exclusión"
         estado = "exclusion"
@@ -400,6 +401,9 @@ def build_calculo(
     margen_categoria = (
         format_currency(tope_actual.tope_facturacion - total) if tope_actual else "-"
     )
+    margen_siguiente = None
+    if not exclusion and estado == "sube" and tope_corresponde:
+        margen_siguiente = format_currency(tope_corresponde.tope_facturacion - total)
 
     return {
         "categoria_actual": categoria_actual.nombre if categoria_actual else "-",
@@ -413,6 +417,7 @@ def build_calculo(
         "mensual": {label: format_currency(value) for label, value in month_totals.items()},
         "margen_exclusion": margen_exclusion,
         "margen_categoria": margen_categoria,
+        "margen_siguiente": margen_siguiente,
     }
 
 

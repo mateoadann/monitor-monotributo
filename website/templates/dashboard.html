@@ -299,6 +299,12 @@
             <span>Margen de categoria</span>
             <strong>{{ detalle.margen_categoria }}</strong>
           </div>
+          {% if detalle.margen_siguiente %}
+          <div class="metric-card">
+            <span>Margen de siguiente categoria</span>
+            <strong>{{ detalle.margen_siguiente }}</strong>
+          </div>
+          {% endif %}
         </div>
       </div>
       <div class="calculo__side">
