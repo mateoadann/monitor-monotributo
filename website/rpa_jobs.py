@@ -59,4 +59,5 @@ def run_rpa_chain(
                 tipos,
                 seleccionar_tipo,
                 batch_id,
+                job_timeout=600,
             )

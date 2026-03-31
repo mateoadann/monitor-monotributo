@@ -1550,6 +1550,7 @@ def run_rpa():
         tipos if seleccionar_tipo else None,
         seleccionar_tipo,
         batch_id,
+        job_timeout=600,
     )
     return jsonify({"queued": len(ids), "batch_id": batch_id})
 
