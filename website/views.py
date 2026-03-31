@@ -9,7 +9,7 @@ import os
 import io
 import uuid
 
-from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, session, url_for
+from flask import Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from flask_login import current_user, login_required
 from rq import Retry
 from sqlalchemy import or_
@@ -1221,7 +1221,7 @@ def factura_imports():
         .all()
     )
     items = []
-    counts = {"pending": 0, "processing": 0, "done": 0, "failed": 0}
+    counts = {"pending": 0, "processing": 0, "done": 0, "failed": 0, "needs_review": 0}
     active_row = (
         FacturaImport.query.filter(
             FacturaImport.batch_id.isnot(None),
@@ -1236,11 +1236,13 @@ def factura_imports():
         created_at_label = format_datetime_ar(item.created_at)
         items.append(
             {
+                "id": item.id,
                 "created_at": created_at_label,
                 "monotributista": item.monotributista.razon_social if item.monotributista else "-",
                 "source": item.source or "-",
                 "status": status,
                 "result": item.result_message or item.error or "-",
+                "has_pdf": bool(item.pdf_path),
             }
         )
     if active_batch_id:
@@ -1251,13 +1253,41 @@ def factura_imports():
                 "failed" if status == "failed_viewed" else "pending"
             )
             counts[bucket] += 1
+    historical_counts = {"pending": 0, "processing": 0, "done": 0, "failed": 0, "needs_review": 0}
+    for item in items:
+        status = item["status"]
+        bucket = status if status in historical_counts else "pending"
+        historical_counts[bucket] += 1
     return jsonify(
         {
             "items": items,
             "counts": counts,
+            "historical_counts": historical_counts,
             "has_active": bool(active_batch_id),
             "active_batch_id": active_batch_id,
         }
+    )
+
+
+@main_bp.get("/facturas/imports/<int:import_id>/pdf")
+@login_required
+def download_import_pdf(import_id):
+    factura_import = db.session.get(FacturaImport, import_id)
+    if not factura_import or not factura_import.pdf_path:
+        abort(404)
+
+    pdf_full_path = os.path.abspath(factura_import.pdf_path)
+    upload_folder = os.path.abspath(current_app.config["UPLOAD_FOLDER"])
+    if not pdf_full_path.startswith(upload_folder):
+        abort(403)
+
+    if not os.path.isfile(pdf_full_path):
+        abort(404)
+
+    return send_file(
+        pdf_full_path,
+        as_attachment=True,
+        download_name=factura_import.filename or os.path.basename(pdf_full_path),
     )
 
 

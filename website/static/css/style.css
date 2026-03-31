@@ -1001,6 +1001,11 @@ input[type="date"][data-air-picker="true"]::-webkit-calendar-picker-indicator {
   color: #7a5b00;
 }
 
+.status--needs_review {
+  background: #fff3cd;
+  color: #856404;
+}
+
 .imports-progress {
   margin-bottom: 12px;
 }
@@ -1031,6 +1036,10 @@ input[type="date"][data-air-picker="true"]::-webkit-calendar-picker-indicator {
 
 .imports-progress__segment--pending {
   background: #ecc94b;
+}
+
+.imports-progress__segment--needs_review {
+  background: #f0ad4e;
 }
 
 .imports-progress__legend {
@@ -1070,6 +1079,10 @@ input[type="date"][data-air-picker="true"]::-webkit-calendar-picker-indicator {
 
 .imports-progress__stat--pending::before {
   background: #ecc94b;
+}
+
+.imports-progress__stat--needs_review::before {
+  background: #f0ad4e;
 }
 
 .imports-filters {
