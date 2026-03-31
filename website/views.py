@@ -477,7 +477,6 @@ def dashboard():
     anchor_value = f"{anchor_date.year:04d}-{anchor_date.month:02d}"
     monotributistas_raw = Monotributista.query.order_by(Monotributista.razon_social).all()
     categorias_raw = Categoria.query.order_by(Categoria.orden).all()
-    facturas_raw = Factura.query.order_by(Factura.fecha.desc()).all()
     vigencia_anchor = obtener_vigencia_para_fecha(anchor_date)
     topes_anchor = obtener_topes_vigencia(vigencia_anchor)
 
@@ -535,26 +534,6 @@ def dashboard():
             }
         )
 
-    facturas = [
-        {
-            "id": item.id,
-            "facturador_id": item.monotributista_id,
-            "facturador": item.monotributista.razon_social if item.monotributista else "-",
-            "fecha": format_date(item.fecha),
-            "fecha_iso": item.fecha.isoformat(),
-            "tipo": item.tipo_comp,
-            "numero": item.numero_comp,
-            "cuit_receptor": item.cuit_receptor or "-",
-            "razon_receptor": item.razon_social_receptor or "-",
-            "importe": format_currency(item.importe_total),
-            "importe_raw": str(item.importe_total),
-            "desde": format_date(item.fecha_desde),
-            "hasta": format_date(item.fecha_hasta),
-            "concepto": item.concepto or "-",
-        }
-        for item in facturas_raw
-    ]
-
     seleccionado_id = request.args.get("monotributista")
     seleccionado = None
     if seleccionado_id:
@@ -565,15 +544,6 @@ def dashboard():
 
     mono_form = session.pop("mono_form", None)
     open_modal = session.pop("open_modal", None)
-    factura_import_logs = []
-    if active_tab == "facturas":
-        factura_import_logs = (
-            FacturaImport.query.order_by(FacturaImport.created_at.desc())
-            .all()
-        )
-        for item in factura_import_logs:
-            item.created_at_label = format_datetime_ar(item.created_at)
-
     usuarios = []
     if current_user.can_manage_users():
         usuarios = [
@@ -591,7 +561,6 @@ def dashboard():
     return render_template(
         "dashboard.html",
         monotributistas=monotributistas,
-        facturas=facturas,
         categorias=categorias_raw,
         vigencias_table=[
             {
@@ -617,12 +586,88 @@ def dashboard():
         count_exclusion=count_exclusion,
         mono_form=mono_form,
         open_modal=open_modal,
-        factura_import_logs=factura_import_logs,
         usuarios=usuarios,
         can_edit=current_user.can_edit_data(),
         can_manage_config=current_user.can_manage_config(),
         can_manage_users=current_user.can_manage_users(),
         can_run_rpa=current_user.can_run_rpa(),
+    )
+
+
+@main_bp.route("/facturas/api")
+@login_required
+def facturas_api():
+    page = request.args.get("page", 1, type=int)
+    per_page = min(request.args.get("per_page", 10, type=int), 100)
+    search = request.args.get("search", "").strip().lower()
+    facturador_ids = request.args.getlist("facturador", type=int)
+    tipo = request.args.get("tipo", "").strip()
+    orden = request.args.get("orden", "fecha_desc").strip()
+
+    query = Factura.query.join(Monotributista, isouter=True)
+
+    if search:
+        search_pattern = f"%{search}%"
+        query = query.filter(
+            or_(
+                Monotributista.razon_social.ilike(search_pattern),
+                Factura.tipo_comp.ilike(search_pattern),
+                Factura.numero_comp.ilike(search_pattern),
+                Factura.cuit_receptor.ilike(search_pattern),
+                Factura.razon_social_receptor.ilike(search_pattern),
+                Factura.concepto.ilike(search_pattern),
+            )
+        )
+
+    if facturador_ids:
+        query = query.filter(Factura.monotributista_id.in_(facturador_ids))
+
+    if tipo:
+        query = query.filter(Factura.tipo_comp == tipo)
+
+    order_map = {
+        "fecha_desc": Factura.fecha.desc(),
+        "fecha_asc": Factura.fecha.asc(),
+        "importe_desc": Factura.importe_total.desc(),
+        "importe_asc": Factura.importe_total.asc(),
+    }
+    query = query.order_by(order_map.get(orden, Factura.fecha.desc()))
+
+    total = query.count()
+    facturas_page = query.offset((page - 1) * per_page).limit(per_page).all()
+
+    items = []
+    can_edit = current_user.can_edit_data()
+    for item in facturas_page:
+        items.append(
+            {
+                "id": item.id,
+                "facturador_id": item.monotributista_id,
+                "facturador": item.monotributista.razon_social if item.monotributista else "-",
+                "fecha": format_date(item.fecha),
+                "fecha_iso": item.fecha.isoformat(),
+                "tipo": item.tipo_comp,
+                "numero": item.numero_comp,
+                "cuit_receptor": item.cuit_receptor or "-",
+                "razon_receptor": item.razon_social_receptor or "-",
+                "importe": format_currency(item.importe_total),
+                "importe_raw": str(item.importe_total),
+                "desde": format_date(item.fecha_desde),
+                "hasta": format_date(item.fecha_hasta),
+                "concepto": item.concepto or "-",
+            }
+        )
+
+    total_pages = max(1, -(-total // per_page))
+    return jsonify(
+        {
+            "items": items,
+            "total": total,
+            "page": page,
+            "per_page": per_page,
+            "total_pages": total_pages,
+            "can_edit": can_edit,
+        }
     )
 
 

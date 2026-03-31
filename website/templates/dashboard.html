@@ -229,44 +229,9 @@
         <span>Concepto</span>
         <span>Acciones</span>
       </div>
-      {% for item in facturas %}
-      <div class="table__row table__row--facturas is-clickable" role="button" tabindex="0" data-row="factura" data-tipo="{{ item.tipo }}" data-fecha="{{ item.fecha_iso }}" data-fecha-label="{{ item.fecha }}" data-importe="{{ item.importe_raw }}" data-importe-label="{{ item.importe }}" data-facturador="{{ item.facturador }}" data-facturador-id="{{ item.facturador_id or '' }}" data-numero="{{ item.numero }}" data-cuit-receptor="{{ item.cuit_receptor }}" data-razon-receptor="{{ item.razon_receptor }}" data-desde="{{ item.desde }}" data-hasta="{{ item.hasta }}" data-concepto="{{ item.concepto }}" data-search="{{ (item.facturador ~ ' ' ~ item.fecha ~ ' ' ~ item.tipo ~ ' ' ~ item.numero ~ ' ' ~ item.cuit_receptor ~ ' ' ~ item.razon_receptor ~ ' ' ~ item.importe ~ ' ' ~ item.desde ~ ' ' ~ item.hasta ~ ' ' ~ item.concepto) | lower }}">
-        <span>{{ item.facturador }}</span>
-        <span>{{ item.fecha }}</span>
-        <span>{{ item.tipo }}</span>
-        <span>{{ item.numero }}</span>
-        <span>{{ item.cuit_receptor }}</span>
-        <span>{{ item.razon_receptor }}</span>
-        <span>{{ item.importe }}</span>
-        <span>{{ item.desde }}</span>
-        <span>{{ item.hasta }}</span>
-        <span>
-          {% if item.concepto|length > 25 %}
-            {{ item.concepto[:22] ~ "..." }}
-          {% else %}
-            {{ item.concepto }}
-          {% endif %}
-        </span>
-        {% if can_edit %}
-        <span class="row-actions">
-          <a class="icon-link" href="{{ url_for('main.edit_factura', factura_id=item.id) }}" aria-label="Editar">
-            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <path d="M4 17.25V20h2.75l8.1-8.1-2.75-2.75-8.1 8.1zM20.7 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" fill="currentColor"/>
-            </svg>
-          </a>
-          <form method="post" action="{{ url_for('main.delete_factura', factura_id=item.id) }}" data-confirm="Confirmar eliminacion de la factura?">
-            <button class="icon-link icon-link--danger" type="submit" aria-label="Eliminar" title="Eliminar">
-              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                <path d="M6 7h12l-1 13a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L6 7zm3-4h6l1 2H8l1-2z" fill="currentColor"/>
-              </svg>
-            </button>
-          </form>
-        </span>
-        {% else %}
-        <span></span>
-        {% endif %}
+      <div id="facturas-loading" class="table__row" style="text-align:center;padding:2rem;">
+        <span style="grid-column:1/-1;">Cargando facturas...</span>
       </div>
-      {% endfor %}
     </div>
     <div class="pagination pagination--bottom" data-pagination="facturas-bottom">
       <button class="ghost-button" type="button" data-page="prev">Anterior</button>
@@ -1674,8 +1639,6 @@
 
   const facturaTable = document.querySelector("#facturas .table");
   if (facturaTable) {
-    const headerRow = facturaTable.querySelector(".table__head");
-    const rows = Array.from(facturaTable.querySelectorAll("[data-row='factura']"));
     const searchInput = document.getElementById("facturaSearch");
     const tipoSelect = document.getElementById("facturaTipo");
     const facturadorSelect = document.querySelector("[data-search-select='facturas']");
@@ -1684,114 +1647,184 @@
     const paginationBottom = document.querySelector("[data-pagination='facturas-bottom']");
     const pageSize = 10;
     let currentPage = 1;
+    let totalPages = 1;
+    let searchDebounceTimer = null;
     const facturadorSelectApi = initSearchableSelect(facturadorSelect, {
       multiple: true,
       placeholder: "Todos",
     });
 
-    const updatePaginationButtons = (totalPages) => {
+    const escAttr = (str) => {
+      if (str == null) return "";
+      return String(str).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    };
+
+    const escText = (str) => {
+      if (str == null) return "";
+      return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    };
+
+    const truncateText = (str, max) => {
+      if (!str || str.length <= max) return escText(str || "");
+      return escText(str.substring(0, max - 3) + "...");
+    };
+
+    const updatePaginationButtons = () => {
       [paginationTop, paginationBottom].forEach((container) => {
-        if (!container) {
-          return;
-        }
+        if (!container) return;
         const prev = container.querySelector("[data-page='prev']");
         const next = container.querySelector("[data-page='next']");
         const info = container.querySelector("[data-page-info]");
-        if (prev) {
-          prev.disabled = currentPage <= 1;
-        }
-        if (next) {
-          next.disabled = currentPage >= totalPages;
-        }
-        if (info) {
-          info.textContent = `Pagina ${currentPage} de ${totalPages}`;
-        }
+        if (prev) prev.disabled = currentPage <= 1;
+        if (next) next.disabled = currentPage >= totalPages;
+        if (info) info.textContent = `Pagina ${currentPage} de ${totalPages}`;
       });
     };
 
-    const renderPage = (filtered) => {
-      const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-      if (currentPage > totalPages) {
-        currentPage = totalPages;
+    const buildRowHtml = (item, canEdit) => {
+      const conceptoDisplay = truncateText(item.concepto, 25);
+      const editUrl = `/facturas/${item.id}/edit`;
+      const deleteUrl = `/facturas/${item.id}/delete`;
+      let actionsHtml = "";
+      if (canEdit) {
+        actionsHtml = `<span class="row-actions">
+          <a class="icon-link" href="${escAttr(editUrl)}" aria-label="Editar">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M4 17.25V20h2.75l8.1-8.1-2.75-2.75-8.1 8.1zM20.7 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" fill="currentColor"/>
+            </svg>
+          </a>
+          <form method="post" action="${escAttr(deleteUrl)}" data-confirm="Confirmar eliminacion de la factura?">
+            <button class="icon-link icon-link--danger" type="submit" aria-label="Eliminar" title="Eliminar">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M6 7h12l-1 13a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L6 7zm3-4h6l1 2H8l1-2z" fill="currentColor"/>
+              </svg>
+            </button>
+          </form>
+        </span>`;
+      } else {
+        actionsHtml = `<span></span>`;
       }
-      const start = (currentPage - 1) * pageSize;
-      const pageRows = filtered.slice(start, start + pageSize);
-
-      rows.forEach((row) => {
-        row.style.display = "none";
-      });
-
-      pageRows.forEach((row) => {
-        row.style.display = "";
-        facturaTable.appendChild(row);
-      });
-
-      facturaTable.prepend(headerRow);
-      updatePaginationButtons(totalPages);
+      return `<div class="table__row table__row--facturas is-clickable" role="button" tabindex="0"
+        data-row="factura"
+        data-tipo="${escAttr(item.tipo)}"
+        data-fecha="${escAttr(item.fecha_iso)}"
+        data-fecha-label="${escAttr(item.fecha)}"
+        data-importe="${escAttr(item.importe_raw)}"
+        data-importe-label="${escAttr(item.importe)}"
+        data-facturador="${escAttr(item.facturador)}"
+        data-facturador-id="${escAttr(item.facturador_id || '')}"
+        data-numero="${escAttr(item.numero)}"
+        data-cuit-receptor="${escAttr(item.cuit_receptor)}"
+        data-razon-receptor="${escAttr(item.razon_receptor)}"
+        data-desde="${escAttr(item.desde)}"
+        data-hasta="${escAttr(item.hasta)}"
+        data-concepto="${escAttr(item.concepto)}">
+        <span>${escText(item.facturador)}</span>
+        <span>${escText(item.fecha)}</span>
+        <span>${escText(item.tipo)}</span>
+        <span>${escText(item.numero)}</span>
+        <span>${escText(item.cuit_receptor)}</span>
+        <span>${escText(item.razon_receptor)}</span>
+        <span>${escText(item.importe)}</span>
+        <span>${escText(item.desde)}</span>
+        <span>${escText(item.hasta)}</span>
+        <span>${conceptoDisplay}</span>
+        ${actionsHtml}
+      </div>`;
     };
 
-    const applyFilters = (resetPage = false) => {
-      const query = (searchInput.value || "").toLowerCase().trim();
+    const renderFacturas = (data) => {
+      const existing = facturaTable.querySelectorAll("[data-row='factura'], #facturas-loading, .table__row--empty");
+      existing.forEach((el) => el.remove());
+
+      if (data.items.length === 0) {
+        const emptyRow = document.createElement("div");
+        emptyRow.className = "table__row table__row--empty";
+        emptyRow.style.textAlign = "center";
+        emptyRow.style.padding = "2rem";
+        emptyRow.textContent = "No se encontraron facturas.";
+        facturaTable.appendChild(emptyRow);
+      } else {
+        const fragment = document.createDocumentFragment();
+        const temp = document.createElement("div");
+        data.items.forEach((item) => {
+          temp.innerHTML = buildRowHtml(item, data.can_edit);
+          fragment.appendChild(temp.firstElementChild);
+        });
+        facturaTable.appendChild(fragment);
+      }
+
+      totalPages = data.total_pages;
+      updatePaginationButtons();
+
+      facturaTable.querySelectorAll("[data-row='factura']").forEach((row) => {
+        row.addEventListener("click", (event) => {
+          if (event.target.closest(".row-actions, a, button, form")) return;
+          openFacturaDetail(row);
+        });
+        row.addEventListener("keydown", (event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            openFacturaDetail(row);
+          }
+        });
+      });
+
+    };
+
+    const fetchFacturas = (resetPage = false) => {
+      if (resetPage) currentPage = 1;
+      const params = new URLSearchParams();
+      params.set("page", currentPage);
+      params.set("per_page", pageSize);
+      const query = (searchInput.value || "").trim();
+      if (query) params.set("search", query);
       const tipo = tipoSelect.value;
-      const facturadores = new Set(
-        facturadorSelectApi ? facturadorSelectApi.getValues() : []
-      );
+      if (tipo) params.set("tipo", tipo);
       const orden = ordenSelect.value;
+      if (orden) params.set("orden", orden);
+      const facturadores = facturadorSelectApi ? facturadorSelectApi.getValues() : [];
+      facturadores.forEach((id) => params.append("facturador", id));
 
-      let filtered = rows.filter((row) => {
-        const matchesQuery = row.dataset.search.includes(query);
-        const matchesTipo = !tipo || row.dataset.tipo === tipo;
-        const matchesFacturador =
-          !facturadores.size || facturadores.has(String(row.dataset.facturadorId || ""));
-        return matchesQuery && matchesTipo && matchesFacturador;
-      });
-
-      const sorters = {
-        fecha_desc: (a, b) => b.dataset.fecha.localeCompare(a.dataset.fecha),
-        fecha_asc: (a, b) => a.dataset.fecha.localeCompare(b.dataset.fecha),
-        importe_desc: (a, b) => parseFloat(b.dataset.importe) - parseFloat(a.dataset.importe),
-        importe_asc: (a, b) => parseFloat(a.dataset.importe) - parseFloat(b.dataset.importe),
-      };
-
-      filtered.sort(sorters[orden] || sorters.fecha_desc);
-      if (resetPage) {
-        currentPage = 1;
-      }
-      renderPage(filtered);
+      fetch(`/facturas/api?${params.toString()}`)
+        .then((res) => res.json())
+        .then((data) => renderFacturas(data))
+        .catch((err) => console.error("Error fetching facturas:", err));
     };
 
-    ["input", "change"].forEach((eventName) => {
-      searchInput.addEventListener(eventName, () => applyFilters(true));
+    searchInput.addEventListener("input", () => {
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = setTimeout(() => fetchFacturas(true), 300);
     });
-    tipoSelect.addEventListener("change", () => applyFilters(true));
+    tipoSelect.addEventListener("change", () => fetchFacturas(true));
     if (facturadorSelect) {
-      facturadorSelect.addEventListener("search-select:change", () => applyFilters(true));
+      facturadorSelect.addEventListener("search-select:change", () => fetchFacturas(true));
     }
-    ordenSelect.addEventListener("change", () => applyFilters(true));
+    ordenSelect.addEventListener("change", () => fetchFacturas(true));
 
     [paginationTop, paginationBottom].forEach((container) => {
-      if (!container) {
-        return;
-      }
+      if (!container) return;
       const prev = container.querySelector("[data-page='prev']");
       const next = container.querySelector("[data-page='next']");
       if (prev) {
         prev.addEventListener("click", () => {
           if (currentPage > 1) {
             currentPage -= 1;
-            applyFilters(false);
+            fetchFacturas(false);
           }
         });
       }
       if (next) {
         next.addEventListener("click", () => {
-          currentPage += 1;
-          applyFilters(false);
+          if (currentPage < totalPages) {
+            currentPage += 1;
+            fetchFacturas(false);
+          }
         });
       }
     });
 
-    applyFilters(true);
+    fetchFacturas(true);
   }
 
   const openButtons = document.querySelectorAll("[data-open]");
@@ -2040,22 +2073,6 @@
 
   openButtons.forEach((button) => {
     button.addEventListener("click", () => openModal(button.dataset.open));
-  });
-
-  const facturaRows = document.querySelectorAll("[data-row='factura']");
-  facturaRows.forEach((row) => {
-    row.addEventListener("click", (event) => {
-      if (event.target.closest(".row-actions, a, button, form")) {
-        return;
-      }
-      openFacturaDetail(row);
-    });
-    row.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        openFacturaDetail(row);
-      }
-    });
   });
 
   closeButtons.forEach((button) => {
