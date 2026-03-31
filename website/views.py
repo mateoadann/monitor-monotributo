@@ -1215,11 +1215,22 @@ def delete_factura(factura_id):
 @main_bp.get("/facturas/imports")
 @login_required
 def factura_imports():
-    logs = (
-        FacturaImport.query.order_by(FacturaImport.created_at.desc())
-        .limit(500)
+    terminal_statuses = ["done", "failed_viewed"]
+    non_done = (
+        FacturaImport.query
+        .filter(FacturaImport.status.notin_(terminal_statuses))
+        .order_by(FacturaImport.created_at.desc())
         .all()
     )
+    remaining = max(0, 500 - len(non_done))
+    done_records = (
+        FacturaImport.query
+        .filter(FacturaImport.status.in_(terminal_statuses))
+        .order_by(FacturaImport.created_at.desc())
+        .limit(remaining)
+        .all()
+    ) if remaining > 0 else []
+    logs = sorted(non_done + done_records, key=lambda x: x.created_at, reverse=True)
     items = []
     counts = {"pending": 0, "processing": 0, "done": 0, "failed": 0, "needs_review": 0}
     active_row = (
