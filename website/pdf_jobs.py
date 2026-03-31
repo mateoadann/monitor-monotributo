@@ -73,13 +73,15 @@ def handle_import_failure(job, exc_type, exc_value, tb) -> None:
         factura_import = db.session.get(FacturaImport, import_id)
         if not factura_import:
             return
-        if factura_import.status != "done":
+        if factura_import.status not in ("done", "needs_review"):
             error_message = str(exc_value) if exc_value else "Fallo en procesamiento"
             factura_import.status = "failed"
             factura_import.error = error_message
             factura_import.result_message = error_message
             factura_import.processed_at = datetime.now(timezone.utc)
             db.session.commit()
+        if factura_import.status == "needs_review":
+            return  # PDF preserved for manual review
         cleanup_pdf_path(factura_import.pdf_path, app.config.get("UPLOAD_FOLDER"))
 
 
@@ -124,9 +126,15 @@ def process_factura_import(import_id: int) -> None:
                 usd_total = data.get("importe_total_usd") or data.get("importe_total")
                 exchange_rate = data.get("exchange_rate")
                 if usd_total is None or exchange_rate is None:
-                    raise ValueError(
-                        "Faltan importe_total_usd o exchange_rate para factura E"
+                    factura_import.status = "needs_review"
+                    factura_import.error = (
+                        "Factura E sin importe USD o tipo de cambio. "
+                        "Requiere revisión manual."
                     )
+                    factura_import.processed_at = datetime.now(timezone.utc)
+                    db.session.commit()
+                    pdf_path = None
+                    return
                 importe_total = (usd_total * exchange_rate).quantize(Decimal("0.01"))
 
             if tipo_comp in CREDIT_NOTE_TYPES and isinstance(importe_total, Decimal):

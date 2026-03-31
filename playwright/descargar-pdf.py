@@ -420,8 +420,8 @@ def run(
     else:
         logger.info("Recording RPA deshabilitado.")
 
-    fecha_desde_value = fecha_desde or FECHA_DESDE
-    fecha_hasta_value = fecha_hasta or FECHA_HASTA
+    fecha_desde_value = fecha_desde
+    fecha_hasta_value = fecha_hasta
     tipos_value = list(tipos_comprobante or TIPOS_COMPROBANTE)
     if seleccionar_tipo is None:
         seleccionar_tipo = SELECCIONAR_TIPO_COMPROBANTE
@@ -452,8 +452,8 @@ def run(
     page = context.new_page()
 
     with app.app_context():
-        cuit_value = cuit or CUIT
-        clave_value = clave_fiscal or CLAVE_FISCAL
+        cuit_value = cuit
+        clave_value = clave_fiscal
         monotributista = None
         if monotributista_id:
             monotributista = db.session.get(Monotributista, monotributista_id)
