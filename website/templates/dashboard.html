@@ -858,12 +858,14 @@
       <div class="imports-progress__bar">
         <div class="imports-progress__segment imports-progress__segment--done" data-progress="done" style="width:0"></div>
         <div class="imports-progress__segment imports-progress__segment--failed" data-progress="failed" style="width:0"></div>
+        <div class="imports-progress__segment imports-progress__segment--needs_review" data-progress="needs_review" style="width:0"></div>
         <div class="imports-progress__segment imports-progress__segment--processing" data-progress="processing" style="width:0"></div>
         <div class="imports-progress__segment imports-progress__segment--pending" data-progress="pending" style="width:0"></div>
       </div>
       <div class="imports-progress__legend">
         <span class="imports-progress__stat imports-progress__stat--done" data-count="done">0 finalizadas</span>
         <span class="imports-progress__stat imports-progress__stat--failed" data-count="failed">0 fallidas</span>
+        <span class="imports-progress__stat imports-progress__stat--needs_review" data-count="needs_review">0 revisión</span>
         <span class="imports-progress__stat imports-progress__stat--processing" data-count="processing">0 procesando</span>
         <span class="imports-progress__stat imports-progress__stat--pending" data-count="pending">0 pendientes</span>
       </div>
@@ -871,6 +873,7 @@
     <div class="imports-filters" data-imports-filters>
       <button class="imports-filter is-active" type="button" data-filter="all">Todas</button>
       <button class="imports-filter" type="button" data-filter="failed">Fallidas</button>
+      <button class="imports-filter" type="button" data-filter="needs_review">Revisión</button>
       <button class="imports-filter" type="button" data-filter="pending">Pendientes</button>
       <button class="imports-filter" type="button" data-filter="processing">Procesando</button>
       <button class="imports-filter" type="button" data-filter="done">Finalizadas</button>
@@ -2113,8 +2116,8 @@
     const s = raw === "failed_viewed" ? "failed" : (raw || "pending");
     return {
       key: s,
-      cls: s === "done" ? "done" : s === "processing" ? "processing" : s === "failed" ? "failed" : "pending",
-      label: s === "done" ? "finalizada" : s === "processing" ? "procesando" : s === "failed" ? "fallida" : "pendiente",
+      cls: s === "done" ? "done" : s === "processing" ? "processing" : s === "failed" ? "failed" : s === "needs_review" ? "needs_review" : "pending",
+      label: s === "done" ? "finalizada" : s === "processing" ? "procesando" : s === "failed" ? "fallida" : s === "needs_review" ? "revisión" : "pendiente",
     };
   };
 
@@ -2143,39 +2146,49 @@
     importsBody.innerHTML = filtered
       .map((item) => {
         const st = statusMap(item.status);
+        const pdfLink = item.has_pdf
+          ? ` <a href="/facturas/imports/${item.id}/pdf" target="_blank" title="Descargar PDF">📄</a>`
+          : "";
         return `
           <div class="table__row table__row--imports">
             <span>${formatImportDate(item.created_at)}</span>
             <span>${item.monotributista || "-"}</span>
             <span>${sourceLabel(item.source)}</span>
             <span class="status-pill status--${st.cls}">${st.label}</span>
-            <span class="imports-result">${item.result || "-"}</span>
+            <span class="imports-result">${item.result || "-"}${pdfLink}</span>
           </div>`;
       })
       .join("");
   };
 
-  const updateProgress = (counts, hasActive) => {
+  const updateProgress = (counts, hasActive, historicalCounts) => {
     const progressEl = document.querySelector("[data-imports-progress]");
     const isActive = typeof hasActive === "boolean"
       ? hasActive
       : ((counts.pending || 0) + (counts.processing || 0) > 0);
+
+    const hist = historicalCounts || {};
+    const hasHistorical = !isActive && ((hist.failed || 0) + (hist.needs_review || 0) + (hist.done || 0) + (hist.processing || 0) + (hist.pending || 0)) > 0;
+    const showProgress = isActive || hasHistorical;
+
     if (progressEl) {
-      progressEl.style.display = isActive ? "" : "none";
+      progressEl.style.display = showProgress ? "" : "none";
     }
-    if (!isActive) {
+    if (!showProgress) {
       return;
     }
-    const total = (counts.done || 0) + (counts.failed || 0) + (counts.processing || 0) + (counts.pending || 0);
+
+    const displayCounts = isActive ? counts : hist;
+    const total = (displayCounts.done || 0) + (displayCounts.failed || 0) + (displayCounts.needs_review || 0) + (displayCounts.processing || 0) + (displayCounts.pending || 0);
     const pct = (n) => total ? `${((n / total) * 100).toFixed(1)}%` : "0";
     document.querySelectorAll("[data-progress]").forEach((seg) => {
       const key = seg.dataset.progress;
-      seg.style.width = pct(counts[key] || 0);
+      seg.style.width = pct(displayCounts[key] || 0);
     });
-    const labels = { done: "finalizadas", failed: "fallidas", processing: "procesando", pending: "pendientes" };
+    const labels = { done: "finalizadas", failed: "fallidas", needs_review: "revisión", processing: "procesando", pending: "pendientes" };
     document.querySelectorAll("[data-count]").forEach((el) => {
       const key = el.dataset.count;
-      el.textContent = `${counts[key] || 0} ${labels[key]}`;
+      el.textContent = `${displayCounts[key] || 0} ${labels[key]}`;
     });
   };
 
@@ -2206,7 +2219,7 @@
         const hasActive = typeof data.has_active === "boolean"
           ? data.has_active
           : ((counts.pending || 0) + (counts.processing || 0)) > 0;
-        updateProgress(counts, hasActive);
+        updateProgress(counts, hasActive, data.historical_counts || {});
         renderImportRows(data.items);
       }
     } catch (error) {

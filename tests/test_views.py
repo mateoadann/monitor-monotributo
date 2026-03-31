@@ -479,17 +479,13 @@ def test_pdf_import_factura_e_exige_exchange_rate(monkeypatch, app):
     monkeypatch.setattr("website.pdf_jobs.extract_factura_data", fake_extract)
     monkeypatch.setattr("website.pdf_jobs.cleanup_pdf_path", lambda *_: None)
 
-    with pytest.raises(Exception):
-        process_factura_import(import_id)
+    process_factura_import(import_id)
 
     with app.app_context():
         db.session.remove()
-        failed = db.session.get(FacturaImport, import_id)
-        assert failed.status == "failed"
-        assert (
-            failed.result_message
-            == "Faltan importe_total_usd o exchange_rate para factura E"
-        )
+        review = db.session.get(FacturaImport, import_id)
+        assert review.status == "needs_review"
+        assert "Factura E" in review.error
 
 
 def test_factura_imports_counts_usa_lote_activo_mas_reciente(client, app):
@@ -564,6 +560,7 @@ def test_factura_imports_counts_usa_lote_activo_mas_reciente(client, app):
         "processing": 1,
         "done": 1,
         "failed": 1,
+        "needs_review": 0,
     }
 
 
@@ -612,4 +609,5 @@ def test_factura_imports_counts_en_cero_sin_lote_activo(client, app):
         "processing": 0,
         "done": 0,
         "failed": 0,
+        "needs_review": 0,
     }
