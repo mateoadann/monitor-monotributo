@@ -402,7 +402,7 @@ def build_calculo(
         format_currency(tope_actual.tope_facturacion - total) if tope_actual else "-"
     )
     margen_siguiente = None
-    if not exclusion and estado == "sube" and tope_corresponde:
+    if not exclusion and estado in ("sube", "baja") and tope_corresponde:
         margen_siguiente = format_currency(tope_corresponde.tope_facturacion - total)
 
     return {

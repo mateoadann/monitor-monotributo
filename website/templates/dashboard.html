@@ -301,7 +301,13 @@
           </div>
           {% if detalle.margen_siguiente %}
           <div class="metric-card">
-            <span>Margen de siguiente categoria</span>
+            <span>
+              {% if detalle.estado_categoria == 'sube' %}
+                Margen de siguiente categoria
+              {% elif detalle.estado_categoria == 'baja' %}
+                Margen para mantener categoria
+              {% endif %}
+            </span>
             <strong>{{ detalle.margen_siguiente }}</strong>
           </div>
           {% endif %}
