@@ -28,9 +28,19 @@ jobs:
 
       - name: Wait for postgres
         run: |
-          until docker compose exec -T postgres pg_isready -U monitor; do
-            sleep 1
+          for i in $(seq 1 30); do
+            if docker compose exec -T postgres pg_isready -U monitor -d monitor; then
+              # Verify we can actually connect and run a query
+              if docker compose exec -T postgres psql -U monitor -d monitor -c "SELECT 1" > /dev/null 2>&1; then
+                echo "Postgres is ready"
+                exit 0
+              fi
+            fi
+            echo "Waiting for postgres... ($i/30)"
+            sleep 2
           done
+          echo "Postgres failed to become ready"
+          exit 1
 
       - name: Create test database
         run: |
