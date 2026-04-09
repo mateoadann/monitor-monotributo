@@ -1356,6 +1356,41 @@ def download_import_pdf(import_id):
     )
 
 
+@main_bp.post("/facturas/imports/<int:import_id>/delete")
+@login_required
+@editor_required
+def delete_factura_import(import_id):
+    factura_import = db.session.get(FacturaImport, import_id)
+    if not factura_import:
+        return jsonify({"error": "Importación no encontrada."}), 404
+    if factura_import.status not in ("failed", "needs_review"):
+        return jsonify({
+            "error": "Solo se pueden borrar importaciones con estado fallido o en revisión."
+        }), 400
+
+    cleanup_pdf_path(
+        factura_import.pdf_path,
+        current_app.config.get("UPLOAD_FOLDER"),
+    )
+
+    db.session.delete(factura_import)
+    db.session.commit()
+    return jsonify({"deleted": 1})
+
+
+@main_bp.post("/facturas/imports/cleanup-failed")
+@login_required
+@editor_required
+def cleanup_failed_imports():
+    failed_imports = FacturaImport.query.filter_by(status="failed").all()
+    upload_root = current_app.config.get("UPLOAD_FOLDER")
+    for fi in failed_imports:
+        cleanup_pdf_path(fi.pdf_path, upload_root)
+        db.session.delete(fi)
+    db.session.commit()
+    return jsonify({"deleted": len(failed_imports)})
+
+
 @main_bp.post("/vigencias/create")
 @login_required
 @admin_required
@@ -1484,6 +1519,54 @@ def delete_vigencia(vigencia_id):
     return redirect(url_for("main.dashboard", tab="configuracion"))
 
 
+def _find_active_rpa_conflict(queue, requested_ids: list[int]) -> list[int]:
+    """
+    Retorna la lista de monotributista_ids que ya tienen un job run_rpa_chain
+    pending o en ejecución. Lista vacía = no hay conflicto.
+    """
+    from rq.registry import StartedJobRegistry
+
+    requested_set = set(requested_ids)
+    conflict_ids: set[int] = set()
+
+    # Jobs pending en la cola
+    try:
+        pending_jobs = queue.jobs
+    except Exception:
+        pending_jobs = []
+
+    # Jobs started (en ejecución)
+    try:
+        started_registry = StartedJobRegistry(queue=queue)
+        started_ids = started_registry.get_job_ids()
+        started_jobs = [queue.fetch_job(jid) for jid in started_ids]
+        started_jobs = [j for j in started_jobs if j is not None]
+    except Exception:
+        started_jobs = []
+
+    for job in list(pending_jobs) + list(started_jobs):
+        try:
+            func_name = job.func_name or ""
+        except Exception:
+            continue
+        if not func_name.endswith("run_rpa_chain"):
+            continue
+        try:
+            job_args = job.args or ()
+        except Exception:
+            continue
+        if not job_args:
+            continue
+        job_ids = job_args[0] or []
+        if not isinstance(job_ids, (list, tuple)):
+            continue
+        for jid in job_ids:
+            if jid in requested_set:
+                conflict_ids.add(jid)
+
+    return sorted(conflict_ids)
+
+
 @main_bp.post("/rpa/run")
 @login_required
 @editor_required
@@ -1545,8 +1628,22 @@ def run_rpa():
         return jsonify({"error": "No hay monotributistas para procesar."}), 400
 
     ids = [item.id for item in monotributistas]
-    batch_id = uuid.uuid4().hex
     queue = get_queue()
+
+    conflict_ids = _find_active_rpa_conflict(queue, ids)
+    if conflict_ids:
+        conflict_monos = Monotributista.query.filter(
+            Monotributista.id.in_(conflict_ids)
+        ).all()
+        nombres = ", ".join(m.razon_social for m in conflict_monos) or "otro monotributista"
+        return jsonify({
+            "error": (
+                f"Ya hay una descarga RPA en curso o en cola para: {nombres}. "
+                "Esperá a que termine antes de ejecutar otra."
+            )
+        }), 409
+
+    batch_id = uuid.uuid4().hex
     queue.enqueue(
         run_rpa_chain,
         ids,
