@@ -61,8 +61,8 @@
       <label class="field field--inline">
         Orden
         <select id="monoOrden">
-          <option value="razon_asc">Razon social A-K</option>
-          <option value="razon_desc">Razon social K-A</option>
+          <option value="razon_asc">Razon social A-Z</option>
+          <option value="razon_desc">Razon social Z-A</option>
           <option value="categoria_asc">Categoria actual A-K</option>
         </select>
       </label>
@@ -829,7 +829,12 @@
   <div class="modal__content">
     <div class="modal__header">
       <h3>Importaciones de facturas</h3>
-      <button class="modal__close" type="button" data-close>&times;</button>
+      <div class="modal__header-actions">
+        <button class="outline outline--sm imports-cleanup-btn" type="button" data-imports-cleanup style="display:none;">
+          Limpiar fallidos (<span data-imports-cleanup-count>0</span>)
+        </button>
+        <button class="modal__close" type="button" data-close>&times;</button>
+      </div>
     </div>
     <div class="imports-progress" data-imports-progress>
       <div class="imports-progress__bar">
@@ -862,6 +867,7 @@
         <span>Origen</span>
         <span>Estado</span>
         <span>Resultado</span>
+        <span></span>
       </div>
       <div data-imports-body>
       </div>
@@ -2168,7 +2174,7 @@
       importsBody.innerHTML = `
         <div class="table__row table__row--imports">
           <span>${msg}</span>
-          <span></span><span></span><span></span><span></span>
+          <span></span><span></span><span></span><span></span><span></span>
         </div>`;
       return;
     }
@@ -2178,6 +2184,10 @@
         const pdfLink = item.has_pdf
           ? ` <a href="/facturas/imports/${item.id}/pdf" target="_blank" title="Descargar PDF">📄</a>`
           : "";
+        const canDelete = st.key === "failed" || st.key === "needs_review";
+        const deleteBtn = canDelete
+          ? `<button type="button" class="imports-delete-btn" data-imports-delete="${item.id}" title="Borrar importación">&times;</button>`
+          : "";
         return `
           <div class="table__row table__row--imports">
             <span>${formatImportDate(item.created_at)}</span>
@@ -2185,6 +2195,7 @@
             <span>${sourceLabel(item.source)}</span>
             <span class="status-pill status--${st.cls}">${st.label}</span>
             <span class="imports-result">${item.result || "-"}${pdfLink}</span>
+            <span class="imports-actions">${deleteBtn}</span>
           </div>`;
       })
       .join("");
@@ -2250,11 +2261,87 @@
           : ((counts.pending || 0) + (counts.processing || 0)) > 0;
         updateProgress(counts, hasActive, data.historical_counts || {});
         renderImportRows(data.items);
+        updateCleanupButton(data.historical_counts || {}, counts);
       }
     } catch (error) {
       // Ignore polling errors.
     }
   };
+
+  const updateCleanupButton = (historicalCounts, counts) => {
+    const btn = document.querySelector("[data-imports-cleanup]");
+    if (!btn) return;
+    const failedCount = (historicalCounts.failed || 0);
+    const countEl = btn.querySelector("[data-imports-cleanup-count]");
+    if (countEl) {
+      countEl.textContent = String(failedCount);
+    }
+    btn.style.display = failedCount > 0 ? "" : "none";
+  };
+
+  const deleteImport = async (importId) => {
+    try {
+      const res = await fetch(`/facturas/imports/${importId}/delete`, {
+        method: "POST",
+        headers: { "X-Requested-With": "XMLHttpRequest" },
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        showFlash(body.error || "No se pudo borrar la importación.", "error");
+        return;
+      }
+      showFlash("Importación borrada.", "success");
+      fetchImports();
+    } catch (err) {
+      showFlash("Error de red al borrar importación.", "error");
+    }
+  };
+
+  const runCleanupFailedImports = async () => {
+    try {
+      const res = await fetch("/facturas/imports/cleanup-failed", {
+        method: "POST",
+        headers: { "X-Requested-With": "XMLHttpRequest" },
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        showFlash(body.error || "No se pudo limpiar.", "error");
+        return;
+      }
+      const data = await res.json();
+      showFlash(`Se borraron ${data.deleted} importaciones fallidas.`, "success");
+      fetchImports();
+    } catch (err) {
+      showFlash("Error de red al limpiar importaciones.", "error");
+    }
+  };
+
+  const cleanupFailedImports = () => {
+    if (typeof openConfirm === "function") {
+      openConfirm(
+        "¿Seguro que querés borrar TODAS las importaciones fallidas? Esta acción no se puede deshacer.",
+        runCleanupFailedImports,
+      );
+    } else {
+      runCleanupFailedImports();
+    }
+  };
+
+  if (importsBody) {
+    importsBody.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-imports-delete]");
+      if (!btn) return;
+      const importId = btn.dataset.importsDelete;
+      if (importId) {
+        deleteImport(importId);
+      }
+    });
+  }
+
+  const cleanupBtn = document.querySelector("[data-imports-cleanup]");
+  if (cleanupBtn) {
+    cleanupBtn.addEventListener("click", cleanupFailedImports);
+  }
 
   const startImportsPolling = () => {
     if (importsTimer) {

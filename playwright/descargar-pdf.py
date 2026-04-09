@@ -712,6 +712,9 @@ def run(
                         logger.warning("Sin boton Ver para comprobante %s.", comp_id)
                         continue
 
+                    # Fuerza relectura desde DB para evitar ver datos stale del identity map
+                    # cuando hay corridas RPA concurrentes o sucesivas del mismo monotributista.
+                    db.session.expire_all()
                     exists = False
                     if monotributista_id and tipo_comp:
                         exists = (

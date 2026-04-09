@@ -955,7 +955,45 @@ button.stat:focus-visible {
 }
 
 .table__row--imports {
-  grid-template-columns: 1.2fr 1.4fr 0.7fr 0.8fr 2fr;
+  grid-template-columns: 1.2fr 1.4fr 0.7fr 0.8fr 2fr 0.4fr;
+}
+
+.imports-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.imports-delete-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: #9b2c2c;
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 2px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.imports-delete-btn:hover {
+  background: #ffe5e5;
+  border-color: #9b2c2c;
+}
+
+.imports-cleanup-btn {
+  color: #9b2c2c;
+  border-color: #9b2c2c;
+}
+
+.imports-cleanup-btn:hover {
+  background: #ffe5e5;
+}
+
+.modal__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 #configuracion input[type="date"][data-air-datepicker="true"],
