@@ -129,4 +129,24 @@ def create_app(init_db: bool = True):
             create_admin_if_missing()
             seed_data()
 
+        # Iniciar scheduler solo en el proceso web (no en worker ni reloader child)
+        if os.environ.get("RQ_WORKER") != "1":
+            _start_scheduler_safe(app)
+
     return app
+
+
+def _start_scheduler_safe(app):
+    """Inicia el scheduler evitando doble inicio con el reloader de Flask."""
+    # Cuando Flask debug=True, el reloader lanza un proceso hijo.
+    # WERKZEUG_RUN_MAIN='true' indica que estamos en el hijo (el real).
+    # Si NO hay reloader (produccion), siempre arrancamos.
+    is_reloader_parent = (
+        os.environ.get("FLASK_DEBUG", "0") == "1"
+        and os.environ.get("WERKZEUG_RUN_MAIN") != "true"
+    )
+    if is_reloader_parent:
+        return
+
+    from website.scheduler import start_scheduler
+    start_scheduler(app)

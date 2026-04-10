@@ -24,6 +24,7 @@ from website.models import (
     Factura,
     FacturaImport,
     Monotributista,
+    RpaSchedule,
     SmtpConfig,
     User,
     Vigencia,
@@ -573,6 +574,25 @@ def dashboard():
         "body_html": email_tpl.body_html,
     }
 
+    rpa_schedules = []
+    if current_user.can_manage_config():
+        rpa_schedules = [
+            {
+                "id": s.id,
+                "name": s.name,
+                "day_of_week": s.day_of_week,
+                "hour": s.hour,
+                "minute": s.minute,
+                "monotributista_ids": s.get_monotributista_ids(),
+                "send_report": s.send_report,
+                "report_email": s.report_email or "",
+                "is_active": s.is_active,
+                "last_run_at": s.last_run_at.strftime("%d/%m/%Y %H:%M") if s.last_run_at else None,
+                "last_run_status": s.last_run_status,
+            }
+            for s in RpaSchedule.query.order_by(RpaSchedule.created_at.desc()).all()
+        ]
+
     mono_form = session.pop("mono_form", None)
     open_modal = session.pop("open_modal", None)
     usuarios = []
@@ -625,6 +645,7 @@ def dashboard():
         smtp_config=smtp_config_dict,
         email_template=email_template_dict,
         has_smtp=smtp_cfg is not None,
+        rpa_schedules=rpa_schedules,
     )
 
 
@@ -2016,3 +2037,126 @@ def envio_masivo():
         "skipped": skipped,
         "errors": errors,
     })
+
+
+# --- Programacion RPA ---
+
+
+@main_bp.post("/rpa-schedule/save")
+@login_required
+@admin_required
+def rpa_schedule_save():
+    import json as _json
+
+    data = request.get_json(silent=True) or {}
+    name = (data.get("name") or "").strip()
+    days = data.get("day_of_week", "")
+    hour = data.get("hour")
+    minute = data.get("minute")
+    mono_ids = data.get("monotributista_ids", [])
+    send_report = bool(data.get("send_report", True))
+    report_email = (data.get("report_email") or "").strip()
+    schedule_id = data.get("id")
+
+    if not name:
+        return jsonify({"error": "El nombre es obligatorio."}), 400
+    if not days:
+        return jsonify({"error": "Selecciona al menos un dia."}), 400
+    if hour is None or minute is None:
+        return jsonify({"error": "Completa la hora y los minutos."}), 400
+
+    try:
+        hour = int(hour)
+        minute = int(minute)
+    except (ValueError, TypeError):
+        return jsonify({"error": "Hora y minutos deben ser numeros."}), 400
+
+    if not (0 <= hour <= 23) or not (0 <= minute <= 59):
+        return jsonify({"error": "Hora (0-23) y minutos (0-59) invalidos."}), 400
+
+    if not isinstance(mono_ids, list) or not mono_ids:
+        return jsonify({"error": "Selecciona al menos un monotributista."}), 400
+
+    mono_ids = [int(mid) for mid in mono_ids if str(mid).isdigit()]
+
+    if schedule_id:
+        schedule = db.session.get(RpaSchedule, int(schedule_id))
+        if not schedule:
+            return jsonify({"error": "Programacion no encontrada."}), 404
+    else:
+        schedule = RpaSchedule()
+        db.session.add(schedule)
+
+    schedule.name = name
+    schedule.day_of_week = days if isinstance(days, str) else ",".join(str(d) for d in days)
+    schedule.hour = hour
+    schedule.minute = minute
+    schedule.set_monotributista_ids(mono_ids)
+    schedule.send_report = send_report
+    schedule.report_email = report_email
+    db.session.commit()
+
+    return jsonify({"ok": True, "id": schedule.id})
+
+
+@main_bp.post("/rpa-schedule/delete")
+@login_required
+@admin_required
+def rpa_schedule_delete():
+    data = request.get_json(silent=True) or {}
+    schedule_id = data.get("id")
+    if not schedule_id:
+        return jsonify({"error": "Falta id."}), 400
+
+    schedule = db.session.get(RpaSchedule, int(schedule_id))
+    if not schedule:
+        return jsonify({"error": "Programacion no encontrada."}), 404
+
+    db.session.delete(schedule)
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
+@main_bp.post("/rpa-schedule/toggle")
+@login_required
+@admin_required
+def rpa_schedule_toggle():
+    data = request.get_json(silent=True) or {}
+    schedule_id = data.get("id")
+    if not schedule_id:
+        return jsonify({"error": "Falta id."}), 400
+
+    schedule = db.session.get(RpaSchedule, int(schedule_id))
+    if not schedule:
+        return jsonify({"error": "Programacion no encontrada."}), 404
+
+    schedule.is_active = not schedule.is_active
+    db.session.commit()
+    return jsonify({"ok": True, "is_active": schedule.is_active})
+
+
+@main_bp.post("/rpa-schedule/run-now")
+@login_required
+@admin_required
+def rpa_schedule_run_now():
+    data = request.get_json(silent=True) or {}
+    schedule_id = data.get("id")
+    if not schedule_id:
+        return jsonify({"error": "Falta id."}), 400
+
+    schedule = db.session.get(RpaSchedule, int(schedule_id))
+    if not schedule:
+        return jsonify({"error": "Programacion no encontrada."}), 404
+
+    import threading
+    from website.scheduler import _run_scheduled_rpa
+    from flask import current_app
+
+    app = current_app._get_current_object()
+    t = threading.Thread(
+        target=_run_scheduled_rpa,
+        args=(app, schedule.id),
+        daemon=True,
+    )
+    t.start()
+    return jsonify({"ok": True, "message": "Proceso iniciado."})

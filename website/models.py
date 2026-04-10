@@ -163,6 +163,42 @@ class EmailTemplate(db.Model):
         return cls()
 
 
+class RpaSchedule(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(160), nullable=False)
+    day_of_week = db.Column(db.String(20), nullable=False)  # comma-separated: "1,3,5"
+    hour = db.Column(db.Integer, nullable=False, default=8)
+    minute = db.Column(db.Integer, nullable=False, default=0)
+    monotributista_ids = db.Column(db.Text, nullable=False, default="[]")  # JSON list
+    send_report = db.Column(db.Boolean, nullable=False, default=True)
+    report_email = db.Column(db.String(255), nullable=True)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(
+        db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at = db.Column(
+        db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+    last_run_at = db.Column(db.DateTime, nullable=True)
+    last_run_status = db.Column(db.String(20), nullable=True)
+
+    @classmethod
+    def get_active_schedules(cls):
+        return cls.query.filter_by(is_active=True).all()
+
+    def get_monotributista_ids(self) -> list[int]:
+        import json
+        try:
+            return json.loads(self.monotributista_ids)
+        except (json.JSONDecodeError, TypeError):
+            return []
+
+    def set_monotributista_ids(self, ids: list[int]) -> None:
+        import json
+        self.monotributista_ids = json.dumps(ids)
+
+
 class FacturaImport(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     batch_id = db.Column(db.String(32), index=True)

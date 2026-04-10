@@ -364,7 +364,7 @@
   <div class="tabs__panel {% if active_tab == 'configuracion' %}is-active{% endif %}" id="configuracion">
     <div class="panel__header">
       <h2>Configuracion</h2>
-      <span class="panel__hint">Define vigencias, topes por categoria y configuracion de email.</span>
+      <span class="panel__hint">Define vigencias, topes por categoria, configuracion de email y programacion RPA.</span>
     </div>
 
     <h3 style="margin: 0 0 4px;">Configuración SMTP</h3>
@@ -431,6 +431,116 @@
         <button class="primary" type="submit">Guardar plantilla</button>
       </div>
     </form>
+
+    <hr style="margin: 24px 0; border: none; border-top: 1px solid #e2e2e2;">
+
+    <h3 style="margin: 0 0 4px;">Programacion RPA</h3>
+    <p class="panel__hint" style="margin: 0 0 12px;">Programa la descarga automatica de facturas via RPA para los monotributistas seleccionados. Al finalizar, se envia un reporte por email.</p>
+
+    <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 16px;">
+      <button class="primary" type="button" id="rpaScheduleNewBtn">Nueva programacion</button>
+    </div>
+
+    <div id="rpaScheduleList">
+      {% for sched in rpa_schedules %}
+      <div class="rpa-schedule-card" data-schedule-id="{{ sched.id }}" style="border:1px solid #ddd; border-radius:8px; padding:14px 18px; margin-bottom:10px; background:{{ '#f8f8f8' if not sched.is_active else '#fff' }};">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+          <div>
+            <strong style="font-size:15px;">{{ sched.name }}</strong>
+            {% if not sched.is_active %}<span class="badge badge--sube" style="margin-left:8px;">Inactiva</span>{% else %}<span class="badge badge--mantiene" style="margin-left:8px;">Activa</span>{% endif %}
+          </div>
+          <div style="display:flex; gap:6px;">
+            <button class="outline outline--sm" type="button" data-sched-edit='{{ sched | tojson }}'>Editar</button>
+            <button class="outline outline--sm" type="button" data-sched-toggle="{{ sched.id }}">{{ 'Activar' if not sched.is_active else 'Pausar' }}</button>
+            <button class="outline outline--sm" type="button" data-sched-run="{{ sched.id }}">Ejecutar ahora</button>
+            <button class="outline outline--sm" type="button" data-sched-delete="{{ sched.id }}" style="border-color:#9b2c2c;color:#9b2c2c;">Eliminar</button>
+          </div>
+        </div>
+        <div style="margin-top:8px; font-size:13px; color:#555; display:flex; flex-wrap:wrap; gap:16px;">
+          <span>
+            {% set day_names = {'1':'Lun','2':'Mar','3':'Mie','4':'Jue','5':'Vie','6':'Sab','7':'Dom'} %}
+            {% for d in sched.day_of_week.split(',') %}{{ day_names.get(d.strip(), d.strip()) }}{% if not loop.last %}, {% endif %}{% endfor %}
+            a las {{ '%02d' | format(sched.hour) }}:{{ '%02d' | format(sched.minute) }}
+          </span>
+          <span>{{ sched.monotributista_ids | length }} monotributista{{ 's' if sched.monotributista_ids | length != 1 }}</span>
+          {% if sched.send_report %}<span>Reporte: {{ sched.report_email or 'email SMTP' }}</span>{% endif %}
+          {% if sched.last_run_at %}
+          <span>Ultima ejecucion: {{ sched.last_run_at }}
+            {% if sched.last_run_status == 'success' %}<span class="badge badge--mantiene">OK</span>{% elif sched.last_run_status == 'failed' %}<span class="badge badge--sube">Error</span>{% else %}<span class="badge badge--baja">{{ sched.last_run_status }}</span>{% endif %}
+          </span>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+      {% if not rpa_schedules %}
+      <p style="color:#888; font-size:14px;">No hay programaciones creadas.</p>
+      {% endif %}
+    </div>
+
+    <!-- Modal programacion RPA -->
+    <div class="modal" data-modal="rpa-schedule">
+      <div class="modal__backdrop" data-close></div>
+      <div class="modal__body">
+        <h3>Programacion RPA</h3>
+        <button class="modal__close" type="button" data-close aria-label="Cerrar">&times;</button>
+        <form id="rpaScheduleForm" class="panel__form">
+          <input type="hidden" name="sched_id" id="schedId">
+          <label class="field">
+            Nombre
+            <input type="text" name="sched_name" id="schedName" placeholder="Ej: Proceso semanal" required>
+          </label>
+          <fieldset style="border:1px solid #ddd; border-radius:6px; padding:10px 14px; margin-bottom:12px;">
+            <legend style="font-weight:600; font-size:14px;">Dias de la semana</legend>
+            <div style="display:flex; gap:12px; flex-wrap:wrap;">
+              <label style="display:flex; align-items:center; gap:4px;"><input type="checkbox" name="sched_dow" value="1"> Lun</label>
+              <label style="display:flex; align-items:center; gap:4px;"><input type="checkbox" name="sched_dow" value="2"> Mar</label>
+              <label style="display:flex; align-items:center; gap:4px;"><input type="checkbox" name="sched_dow" value="3"> Mie</label>
+              <label style="display:flex; align-items:center; gap:4px;"><input type="checkbox" name="sched_dow" value="4"> Jue</label>
+              <label style="display:flex; align-items:center; gap:4px;"><input type="checkbox" name="sched_dow" value="5"> Vie</label>
+              <label style="display:flex; align-items:center; gap:4px;"><input type="checkbox" name="sched_dow" value="6"> Sab</label>
+              <label style="display:flex; align-items:center; gap:4px;"><input type="checkbox" name="sched_dow" value="7"> Dom</label>
+            </div>
+          </fieldset>
+          <div class="form-grid">
+            <label class="field">
+              Hora
+              <input type="number" name="sched_hour" id="schedHour" min="0" max="23" value="8" required>
+            </label>
+            <label class="field">
+              Minutos
+              <input type="number" name="sched_minute" id="schedMinute" min="0" max="59" value="0" required>
+            </label>
+          </div>
+          <fieldset style="border:1px solid #ddd; border-radius:6px; padding:10px 14px; margin-bottom:12px;">
+            <legend style="font-weight:600; font-size:14px;">Monotributistas a procesar</legend>
+            <div style="margin-bottom:8px;">
+              <button class="outline outline--sm" type="button" id="schedSelectAll">Todos</button>
+              <button class="outline outline--sm" type="button" id="schedSelectNone">Ninguno</button>
+            </div>
+            <div class="checklist checklist--scroll" style="max-height:200px;">
+              {% for item in monotributistas_select %}
+              <label class="checklist__item" style="display:flex; align-items:center; gap:6px;">
+                <input type="checkbox" name="sched_monos" value="{{ item.id }}">
+                {{ item.razon_social }} ({{ item.cuit }})
+              </label>
+              {% endfor %}
+            </div>
+          </fieldset>
+          <label class="field" style="flex-direction:row; align-items:center; gap:8px; margin-bottom:8px;">
+            <input type="checkbox" name="sched_send_report" id="schedSendReport" checked style="width:auto;">
+            Enviar reporte por email al finalizar
+          </label>
+          <label class="field" id="schedReportEmailField">
+            Email para reporte (dejar vacio para usar el email SMTP)
+            <input type="email" name="sched_report_email" id="schedReportEmail" placeholder="ejemplo@mail.com">
+          </label>
+          <div style="display:flex; gap:10px; margin-top:12px;">
+            <button class="primary" type="submit">Guardar</button>
+            <button class="outline" type="button" data-close>Cancelar</button>
+          </div>
+        </form>
+      </div>
+    </div>
 
     <hr style="margin: 24px 0; border: none; border-top: 1px solid #e2e2e2;">
 
@@ -2848,6 +2958,213 @@
       } finally {
         envioMasivoBtn.disabled = false;
         envioMasivoBtn.textContent = "Enviar emails";
+      }
+    });
+  }
+
+  // --- Programacion RPA ---
+  const schedModal = document.querySelector("[data-modal='rpa-schedule']");
+  const schedForm = document.getElementById("rpaScheduleForm");
+  const schedNewBtn = document.getElementById("rpaScheduleNewBtn");
+  const schedSelectAll = document.getElementById("schedSelectAll");
+  const schedSelectNone = document.getElementById("schedSelectNone");
+  const schedSendReport = document.getElementById("schedSendReport");
+  const schedReportEmailField = document.getElementById("schedReportEmailField");
+
+  function openSchedModal() {
+    if (schedModal) {
+      schedModal.classList.add("is-open");
+      updateBodyScroll();
+    }
+  }
+
+  function resetSchedForm() {
+    if (!schedForm) return;
+    schedForm.reset();
+    document.getElementById("schedId").value = "";
+    schedForm.querySelectorAll("input[name='sched_dow']").forEach(cb => cb.checked = false);
+    schedForm.querySelectorAll("input[name='sched_monos']").forEach(cb => cb.checked = false);
+    document.getElementById("schedHour").value = "8";
+    document.getElementById("schedMinute").value = "0";
+    document.getElementById("schedSendReport").checked = true;
+    if (schedReportEmailField) schedReportEmailField.style.display = "";
+  }
+
+  function fillSchedForm(sched) {
+    document.getElementById("schedId").value = sched.id || "";
+    document.getElementById("schedName").value = sched.name || "";
+    document.getElementById("schedHour").value = sched.hour ?? 8;
+    document.getElementById("schedMinute").value = sched.minute ?? 0;
+    document.getElementById("schedSendReport").checked = sched.send_report !== false;
+    document.getElementById("schedReportEmail").value = sched.report_email || "";
+    if (schedReportEmailField) {
+      schedReportEmailField.style.display = sched.send_report !== false ? "" : "none";
+    }
+
+    const days = (sched.day_of_week || "").split(",").map(d => d.trim());
+    schedForm.querySelectorAll("input[name='sched_dow']").forEach(cb => {
+      cb.checked = days.includes(cb.value);
+    });
+
+    const monoIds = (sched.monotributista_ids || []).map(String);
+    schedForm.querySelectorAll("input[name='sched_monos']").forEach(cb => {
+      cb.checked = monoIds.includes(cb.value);
+    });
+  }
+
+  if (schedNewBtn) {
+    schedNewBtn.addEventListener("click", () => {
+      resetSchedForm();
+      openSchedModal();
+    });
+  }
+
+  if (schedSelectAll) {
+    schedSelectAll.addEventListener("click", () => {
+      schedForm.querySelectorAll("input[name='sched_monos']").forEach(cb => cb.checked = true);
+    });
+  }
+  if (schedSelectNone) {
+    schedSelectNone.addEventListener("click", () => {
+      schedForm.querySelectorAll("input[name='sched_monos']").forEach(cb => cb.checked = false);
+    });
+  }
+  if (schedSendReport) {
+    schedSendReport.addEventListener("change", () => {
+      if (schedReportEmailField) {
+        schedReportEmailField.style.display = schedSendReport.checked ? "" : "none";
+      }
+    });
+  }
+
+  // Edit buttons
+  document.querySelectorAll("[data-sched-edit]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      try {
+        const sched = JSON.parse(btn.dataset.schedEdit);
+        resetSchedForm();
+        fillSchedForm(sched);
+        openSchedModal();
+      } catch (e) {
+        console.error("Error parsing schedule data", e);
+      }
+    });
+  });
+
+  // Toggle active/inactive
+  document.querySelectorAll("[data-sched-toggle]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.schedToggle;
+      try {
+        const resp = await fetch("/rpa-schedule/toggle", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+          showFlash(data.error || "Error al cambiar estado.", "error");
+          return;
+        }
+        showFlash(data.is_active ? "Programacion activada." : "Programacion pausada.", "success");
+        setTimeout(() => location.reload(), 600);
+      } catch (e) {
+        showFlash("Error de red.", "error");
+      }
+    });
+  });
+
+  // Run now
+  document.querySelectorAll("[data-sched-run]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.schedRun;
+      if (!confirm("Ejecutar esta programacion ahora?")) return;
+      try {
+        const resp = await fetch("/rpa-schedule/run-now", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+          showFlash(data.error || "Error al ejecutar.", "error");
+          return;
+        }
+        showFlash(data.message || "Proceso iniciado.", "success");
+        setTimeout(() => location.reload(), 600);
+      } catch (e) {
+        showFlash("Error de red.", "error");
+      }
+    });
+  });
+
+  // Delete
+  document.querySelectorAll("[data-sched-delete]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.schedDelete;
+      if (!confirm("Eliminar esta programacion?")) return;
+      try {
+        const resp = await fetch("/rpa-schedule/delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+          showFlash(data.error || "Error al eliminar.", "error");
+          return;
+        }
+        showFlash("Programacion eliminada.", "success");
+        setTimeout(() => location.reload(), 600);
+      } catch (e) {
+        showFlash("Error de red.", "error");
+      }
+    });
+  });
+
+  // Save form
+  if (schedForm) {
+    schedForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const id = document.getElementById("schedId").value;
+      const name = document.getElementById("schedName").value.trim();
+      const hour = parseInt(document.getElementById("schedHour").value, 10);
+      const minute = parseInt(document.getElementById("schedMinute").value, 10);
+      const sendReport = document.getElementById("schedSendReport").checked;
+      const reportEmail = document.getElementById("schedReportEmail").value.trim();
+
+      const days = Array.from(schedForm.querySelectorAll("input[name='sched_dow']:checked")).map(cb => cb.value);
+      const monoIds = Array.from(schedForm.querySelectorAll("input[name='sched_monos']:checked")).map(cb => parseInt(cb.value, 10));
+
+      const payload = {
+        name,
+        day_of_week: days.join(","),
+        hour,
+        minute,
+        monotributista_ids: monoIds,
+        send_report: sendReport,
+        report_email: reportEmail,
+      };
+      if (id) payload.id = parseInt(id, 10);
+
+      try {
+        const resp = await fetch("/rpa-schedule/save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+          showFlash(data.error || "Error al guardar.", "error");
+          return;
+        }
+        showFlash("Programacion guardada.", "success");
+        if (schedModal) {
+          closeModal(schedModal);
+        }
+        setTimeout(() => location.reload(), 600);
+      } catch (e) {
+        showFlash("Error de red.", "error");
       }
     });
   }

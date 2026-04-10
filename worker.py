@@ -1,5 +1,9 @@
+import os
+
 from redis import Redis
 from rq import Connection, Queue, Worker
+
+os.environ["RQ_WORKER"] = "1"
 
 from website import create_app
 
