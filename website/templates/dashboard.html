@@ -358,8 +358,59 @@
   <div class="tabs__panel {% if active_tab == 'configuracion' %}is-active{% endif %}" id="configuracion">
     <div class="panel__header">
       <h2>Configuracion</h2>
-      <span class="panel__hint">Define vigencias y topes por categoria.</span>
+      <span class="panel__hint">Define vigencias, topes por categoria y configuracion de email.</span>
     </div>
+
+    <h3 style="margin: 0 0 4px;">Configuración SMTP</h3>
+    <p class="panel__hint" style="margin: 0 0 12px;">Configurá el servidor de correo para enviar notificaciones y alertas por email.</p>
+    <form class="panel__form" id="smtpForm">
+      <div class="form-grid">
+        <label class="field">
+          Host
+          <input type="text" name="smtp_host" placeholder="smtp.gmail.com" value="{{ smtp_config.host if smtp_config }}" required>
+        </label>
+        <label class="field">
+          Puerto
+          <input type="number" name="smtp_port" value="{{ smtp_config.port if smtp_config else 587 }}" required>
+        </label>
+      </div>
+      <div class="form-grid">
+        <label class="field">
+          Usuario
+          <input type="text" name="smtp_username" value="{{ smtp_config.username if smtp_config }}" required>
+        </label>
+        <label class="field">
+          Contraseña
+          <input type="password" name="smtp_password" placeholder="{{ '********' if smtp_config }}" {{ '' if smtp_config else 'required' }}>
+        </label>
+      </div>
+      <div class="form-grid">
+        <label class="field">
+          Email remitente
+          <input type="email" name="smtp_from_email" value="{{ smtp_config.from_email if smtp_config }}" required>
+        </label>
+        <label class="field">
+          Nombre remitente
+          <input type="text" name="smtp_from_name" value="{{ smtp_config.from_name if smtp_config else 'Monitor Monotributo' }}">
+        </label>
+      </div>
+      <label class="field" style="flex-direction: row; align-items: center; gap: 8px;">
+        <input type="checkbox" name="smtp_use_tls" {{ 'checked' if not smtp_config or smtp_config.use_tls }} style="width: auto;">
+        Usar TLS
+      </label>
+      <p class="panel__hint" style="margin: 4px 0 8px; font-size: 13px;">Para Gmail, usá una Contraseña de aplicación (requiere verificación en 2 pasos activada).</p>
+      <div style="display: flex; gap: 10px; align-items: center;">
+        <button class="primary" type="submit">Guardar</button>
+        <button class="outline" type="button" id="smtpTestBtn">Enviar prueba</button>
+        {% if smtp_config %}
+        <button class="outline" type="button" id="smtpDeleteBtn" style="border-color: #9b2c2c; color: #9b2c2c;">Eliminar</button>
+        {% endif %}
+      </div>
+    </form>
+
+    <hr style="margin: 24px 0; border: none; border-top: 1px solid #e2e2e2;">
+
+    <h3 style="margin: 0 0 12px;">Vigencias</h3>
     <form class="panel__form" method="post" action="{{ url_for('main.create_vigencia') }}" data-confirm="Confirmar creacion de la vigencia?">
       <div class="form-grid">
         <label class="field">
@@ -2517,6 +2568,93 @@
         }
       }
     });
+  }
+
+  const smtpForm = document.getElementById("smtpForm");
+  if (smtpForm) {
+    smtpForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const data = {
+        host: smtpForm.querySelector("[name='smtp_host']").value,
+        port: parseInt(smtpForm.querySelector("[name='smtp_port']").value, 10),
+        username: smtpForm.querySelector("[name='smtp_username']").value,
+        password: smtpForm.querySelector("[name='smtp_password']").value,
+        from_email: smtpForm.querySelector("[name='smtp_from_email']").value,
+        from_name: smtpForm.querySelector("[name='smtp_from_name']").value,
+        use_tls: smtpForm.querySelector("[name='smtp_use_tls']").checked,
+      };
+      try {
+        const response = await fetch("/smtp/save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        });
+        const result = await response.json();
+        if (!response.ok) {
+          showFlash(result.error || "No se pudo guardar la configuración SMTP.", "error");
+          return;
+        }
+        showFlash("Configuración SMTP guardada.", "success");
+        setTimeout(() => location.reload(), 600);
+      } catch (error) {
+        showFlash("Error de red al guardar configuración SMTP.", "error");
+      }
+    });
+
+    const smtpTestBtn = document.getElementById("smtpTestBtn");
+    if (smtpTestBtn) {
+      smtpTestBtn.addEventListener("click", async () => {
+        const testTo = prompt("Ingresá el email donde enviar la prueba:");
+        if (!testTo || !testTo.trim()) {
+          return;
+        }
+        const originalText = smtpTestBtn.textContent;
+        smtpTestBtn.textContent = "Enviando...";
+        smtpTestBtn.disabled = true;
+        try {
+          const response = await fetch("/smtp/test", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ test_to: testTo.trim() }),
+          });
+          const result = await response.json();
+          if (!response.ok) {
+            showFlash(result.error || "No se pudo enviar el email de prueba.", "error");
+          } else {
+            showFlash(result.message || "Email de prueba enviado.", "success");
+          }
+        } catch (error) {
+          showFlash("Error de red al enviar email de prueba.", "error");
+        } finally {
+          smtpTestBtn.textContent = originalText;
+          smtpTestBtn.disabled = false;
+        }
+      });
+    }
+
+    const smtpDeleteBtn = document.getElementById("smtpDeleteBtn");
+    if (smtpDeleteBtn) {
+      smtpDeleteBtn.addEventListener("click", async () => {
+        if (!confirm("¿Estás seguro de eliminar la configuración SMTP?")) {
+          return;
+        }
+        try {
+          const response = await fetch("/smtp/delete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+          });
+          const result = await response.json();
+          if (!response.ok) {
+            showFlash(result.error || "No se pudo eliminar la configuración SMTP.", "error");
+            return;
+          }
+          showFlash("Configuración SMTP eliminada.", "success");
+          setTimeout(() => location.reload(), 600);
+        } catch (error) {
+          showFlash("Error de red al eliminar configuración SMTP.", "error");
+        }
+      });
+    }
   }
 </script>
 {% endblock %}

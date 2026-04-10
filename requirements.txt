@@ -8,3 +8,4 @@ psycopg2-binary==2.9.9
 gunicorn==22.0.0
 redis==5.0.1
 rq==1.16.1
+cryptography

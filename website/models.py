@@ -110,6 +110,24 @@ class Factura(db.Model):
     monotributista = db.relationship("Monotributista", back_populates="facturas")
 
 
+class SmtpConfig(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    host = db.Column(db.String(255), nullable=False)
+    port = db.Column(db.Integer, nullable=False, default=587)
+    username = db.Column(db.String(255), nullable=False)
+    password_encrypted = db.Column(db.Text, nullable=False)
+    use_tls = db.Column(db.Boolean, nullable=False, default=True)
+    from_email = db.Column(db.String(255), nullable=False)
+    from_name = db.Column(db.String(255), nullable=False, default="Monitor Monotributo")
+    updated_at = db.Column(
+        db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
+
+    @classmethod
+    def get_config(cls) -> SmtpConfig | None:
+        return cls.query.first()
+
+
 class FacturaImport(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     batch_id = db.Column(db.String(32), index=True)

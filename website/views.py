@@ -23,10 +23,12 @@ from website.models import (
     Factura,
     FacturaImport,
     Monotributista,
+    SmtpConfig,
     User,
     Vigencia,
     db,
 )
+from website.email_utils import encrypt_password, decrypt_password, get_smtp_config, send_email
 from website.pdf_jobs import cleanup_pdf_path, handle_import_failure, process_factura_import
 from website.queue import get_queue
 from website.rpa_jobs import run_rpa_chain
@@ -547,6 +549,21 @@ def dashboard():
         seleccionado = monotributistas_raw[0]
     detalle = build_calculo(seleccionado, anchor_date, topes_anchor) if seleccionado else None
 
+    smtp_cfg = SmtpConfig.get_config()
+    smtp_config_dict = (
+        {
+            "host": smtp_cfg.host,
+            "port": smtp_cfg.port,
+            "username": smtp_cfg.username,
+            "use_tls": smtp_cfg.use_tls,
+            "from_email": smtp_cfg.from_email,
+            "from_name": smtp_cfg.from_name,
+            "has_config": True,
+        }
+        if smtp_cfg
+        else None
+    )
+
     mono_form = session.pop("mono_form", None)
     open_modal = session.pop("open_modal", None)
     usuarios = []
@@ -596,6 +613,7 @@ def dashboard():
         can_manage_config=current_user.can_manage_config(),
         can_manage_users=current_user.can_manage_users(),
         can_run_rpa=current_user.can_run_rpa(),
+        smtp_config=smtp_config_dict,
     )
 
 
@@ -1762,3 +1780,94 @@ def change_password():
             return redirect(url_for("main.dashboard"))
 
     return render_template("change_password.html")
+
+
+# ---------------------------------------------------------------------------
+# SMTP Configuration
+# ---------------------------------------------------------------------------
+
+
+@main_bp.post("/smtp/save")
+@login_required
+@admin_required
+def smtp_save():
+    data = request.get_json(silent=True) or {}
+    host = (data.get("host") or "").strip()
+    port = data.get("port")
+    username = (data.get("username") or "").strip()
+    password = (data.get("password") or "").strip()
+    use_tls = bool(data.get("use_tls", True))
+    from_email = (data.get("from_email") or "").strip()
+    from_name = (data.get("from_name") or "").strip()
+
+    if not host:
+        return jsonify({"error": "El host SMTP es obligatorio."}), 400
+    try:
+        port = int(port)
+        if port < 1 or port > 65535:
+            raise ValueError
+    except (TypeError, ValueError):
+        return jsonify({"error": "El puerto debe ser un número entre 1 y 65535."}), 400
+    if not username:
+        return jsonify({"error": "El usuario SMTP es obligatorio."}), 400
+    if not from_email or "@" not in from_email:
+        return jsonify({"error": "El email remitente debe contener '@'."}), 400
+
+    config = SmtpConfig.get_config()
+    if config:
+        config.host = host
+        config.port = port
+        config.username = username
+        if password:
+            config.password_encrypted = encrypt_password(password)
+        config.use_tls = use_tls
+        config.from_email = from_email
+        config.from_name = from_name
+    else:
+        if not password:
+            return jsonify({"error": "La contraseña es obligatoria para la configuración inicial."}), 400
+        config = SmtpConfig(
+            host=host,
+            port=port,
+            username=username,
+            password_encrypted=encrypt_password(password),
+            use_tls=use_tls,
+            from_email=from_email,
+            from_name=from_name,
+        )
+        db.session.add(config)
+
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
+@main_bp.post("/smtp/test")
+@login_required
+@admin_required
+def smtp_test():
+    data = request.get_json(silent=True) or {}
+    test_to = (data.get("test_to") or "").strip()
+    if not test_to or "@" not in test_to:
+        return jsonify({"error": "Ingrese un email de destino válido."}), 400
+
+    try:
+        ok, message = send_email(
+            to=test_to,
+            subject="Test - Monitor Monotributo",
+            body_html="<p>Email de prueba enviado correctamente desde Monitor Monotributo.</p>",
+        )
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 500
+
+    if ok:
+        return jsonify({"ok": True, "message": f"Email de prueba enviado a {test_to}"})
+    return jsonify({"error": message}), 500
+
+
+@main_bp.post("/smtp/delete")
+@login_required
+@admin_required
+def smtp_delete():
+    SmtpConfig.query.delete()
+    db.session.commit()
+    return jsonify({"ok": True})
