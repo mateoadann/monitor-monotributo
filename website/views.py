@@ -29,6 +29,7 @@ from website.models import (
     db,
 )
 from website.email_utils import encrypt_password, decrypt_password, get_smtp_config, send_email
+from website.pdf_generator import generate_calculo_pdf
 from website.pdf_jobs import cleanup_pdf_path, handle_import_failure, process_factura_import
 from website.queue import get_queue
 from website.rpa_jobs import run_rpa_chain
@@ -614,6 +615,35 @@ def dashboard():
         can_manage_users=current_user.can_manage_users(),
         can_run_rpa=current_user.can_run_rpa(),
         smtp_config=smtp_config_dict,
+    )
+
+
+@main_bp.get("/calculo/<int:mono_id>/pdf")
+@login_required
+def calculo_pdf(mono_id):
+    mono = db.session.get(Monotributista, mono_id)
+    if not mono:
+        abort(404)
+    anchor_param = request.args.get("anchor")
+    anchor_date = parse_anchor(anchor_param) or date.today().replace(day=1)
+    anchor_value = f"{anchor_date.year:04d}-{anchor_date.month:02d}"
+    vigencia = obtener_vigencia_para_fecha(anchor_date)
+    topes = obtener_topes_vigencia(vigencia)
+    detalle = build_calculo(mono, anchor_date, topes)
+    meses = list(detalle["mensual"].keys())
+    periodo_label = f"{meses[0]} – {meses[-1]}" if meses else ""
+    generated_at = datetime.now(
+        ZoneInfo("America/Argentina/Cordoba")
+    ).strftime("%d/%m/%Y %H:%M")
+    pdf_bytes = generate_calculo_pdf(
+        detalle, mono.razon_social, mono.cuit, periodo_label, generated_at
+    )
+    filename = f"calculo_{mono.cuit}_{anchor_value}.pdf"
+    return send_file(
+        io.BytesIO(pdf_bytes),
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name=filename,
     )
 
 
