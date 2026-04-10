@@ -33,7 +33,6 @@ RUN apt-get update \
       libpangocairo-1.0-0 \
       libcairo2 \
       libatspi2.0-0 \
-      libgdk-pixbuf2.0-0 \
       fonts-liberation \
       fonts-noto-color-emoji \
     && rm -rf /var/lib/apt/lists/*
