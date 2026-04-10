@@ -62,6 +62,20 @@ def _migrate_factura_import_table(app):
         db.session.commit()
 
 
+def _migrate_monotributista_email(app):
+    """Agrega columna email a monotributista si no existe (idempotente)."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(db.engine)
+    columns = [col["name"] for col in inspector.get_columns("monotributista")]
+
+    if "email" not in columns:
+        db.session.execute(
+            text("ALTER TABLE monotributista ADD COLUMN email VARCHAR(255)")
+        )
+        db.session.commit()
+
+
 def create_app(init_db: bool = True):
     app = Flask(__name__)
     app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-change-me")
@@ -111,6 +125,7 @@ def create_app(init_db: bool = True):
             db.create_all()
             _migrate_user_table(app)
             _migrate_factura_import_table(app)
+            _migrate_monotributista_email(app)
             create_admin_if_missing()
             seed_data()
 

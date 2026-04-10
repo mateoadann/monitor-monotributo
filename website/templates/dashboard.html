@@ -81,6 +81,9 @@
       <div class="panel__actions panel__actions--inline">
         <button class="primary" type="button" data-open="monotributista">Nuevo monotributista</button>
         <button class="ghost-button" type="button" data-open="monotributistas-import">Importar CSV</button>
+        {% if can_manage_config and has_smtp %}
+        <button class="ghost-button" type="button" data-open="envio-masivo">Enviar situacion por mail</button>
+        {% endif %}
       </div>
       {% endif %}
       <div class="pagination pagination--top" data-pagination="monotributistas-top">
@@ -94,6 +97,7 @@
         <span>Razon Social</span>
         <span>CUIT</span>
         <span>Clave Fiscal</span>
+        <span>Email</span>
         <span>Categoria</span>
         <span>Categoria corresponde</span>
         <span>Acciones</span>
@@ -111,6 +115,7 @@
             </svg>
           </button>
         </span>
+        <span>{{ item.email or '-' }}</span>
         <span>{{ item.categoria_actual }}</span>
         <span class="badge badge--{{ item.estado_categoria }}">{{ item.categoria_corresponde }}</span>
         {% if can_edit %}
@@ -406,6 +411,24 @@
         {% if smtp_config %}
         <button class="outline" type="button" id="smtpDeleteBtn" style="border-color: #9b2c2c; color: #9b2c2c;">Eliminar</button>
         {% endif %}
+      </div>
+    </form>
+
+    <hr style="margin: 24px 0; border: none; border-top: 1px solid #e2e2e2;">
+
+    <h3 style="margin: 0 0 4px;">Plantilla de email para envio masivo</h3>
+    <p class="panel__hint" style="margin: 0 0 12px;">Configura el asunto y cuerpo del email que se envia con el PDF adjunto. Podes usar <code>{nombre}</code> y <code>{periodo}</code> como variables.</p>
+    <form class="panel__form" id="emailTemplateForm">
+      <label class="field">
+        Asunto
+        <input type="text" name="email_tpl_subject" value="{{ email_template.subject }}" required>
+      </label>
+      <label class="field">
+        Cuerpo del email (HTML)
+        <textarea name="email_tpl_body" rows="6" required>{{ email_template.body_html }}</textarea>
+      </label>
+      <div style="display: flex; gap: 10px; align-items: center;">
+        <button class="primary" type="submit">Guardar plantilla</button>
       </div>
     </form>
 
@@ -747,6 +770,10 @@
             {% endfor %}
           </select>
         </label>
+        <label class="field">
+          Email
+          <input type="email" name="email" value="{{ mono_form.get('email', '') if mono_form else '' }}" placeholder="email@ejemplo.com">
+        </label>
       </div>
       <button class="primary" type="submit">Crear monotributista</button>
     </form>
@@ -788,6 +815,57 @@
     </form>
   </div>
 </div>
+
+{% if can_manage_config and has_smtp %}
+<div class="modal modal--wide" data-modal="envio-masivo">
+  <div class="modal__content">
+    <div class="modal__header">
+      <h3>Envio masivo de situacion por email</h3>
+      <button class="modal__close" type="button" data-close>&times;</button>
+    </div>
+    <div id="envioMasivoContent">
+      <p class="panel__hint" style="margin: 0 0 12px;">Selecciona los monotributistas a quienes enviar el informe PDF por email. Solo se muestran los que tienen email cargado.</p>
+      <div class="form-grid" style="margin-bottom: 12px;">
+        <label class="field">
+          Periodo de corte
+          <input type="hidden" id="envioMasivoAnchor" value="{{ mono_anchor_value }}">
+          <input type="text" data-month-picker data-hidden-input="#envioMasivoAnchor" data-anchor="{{ mono_anchor_value }}" autocomplete="off" readonly>
+        </label>
+      </div>
+      <div style="display: flex; gap: 10px; margin-bottom: 8px;">
+        <button class="ghost-button" type="button" id="envioMasivoSelectAll">Seleccionar todos</button>
+        <button class="ghost-button" type="button" id="envioMasivoDeselectAll">Deseleccionar todos</button>
+      </div>
+      <div class="table">
+        <div class="table__row table__head" style="grid-template-columns: 40px 1fr 1fr 1fr;">
+          <span></span>
+          <span>Razon Social</span>
+          <span>CUIT</span>
+          <span>Email</span>
+        </div>
+        {% for item in monotributistas %}
+        {% if item.email %}
+        <div class="table__row" style="grid-template-columns: 40px 1fr 1fr 1fr;">
+          <span><input type="checkbox" class="envio-masivo-check" value="{{ item.id }}" checked></span>
+          <span>{{ item.razon_social }}</span>
+          <span>{{ item.cuit }}</span>
+          <span>{{ item.email }}</span>
+        </div>
+        {% endif %}
+        {% endfor %}
+      </div>
+      <div id="envioMasivoEmpty" style="display: none; padding: 16px; text-align: center; color: #666;">
+        No hay monotributistas con email cargado. Edita sus datos para agregar un email.
+      </div>
+      <div style="display: flex; gap: 10px; align-items: center; margin-top: 16px;">
+        <button class="primary" type="button" id="envioMasivoBtn">Enviar emails</button>
+        <span id="envioMasivoStatus" style="font-size: 14px;"></span>
+      </div>
+      <div id="envioMasivoResult" style="display: none; margin-top: 12px; padding: 12px; border-radius: 6px; font-size: 14px;"></div>
+    </div>
+  </div>
+</div>
+{% endif %}
 
 <div class="modal" data-modal="factura">
   <div class="modal__content">
@@ -2656,6 +2734,122 @@
         }
       });
     }
+  }
+
+  /* --- Email Template Form --- */
+  const emailTplForm = document.getElementById("emailTemplateForm");
+  if (emailTplForm) {
+    emailTplForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const data = {
+        subject: emailTplForm.querySelector("[name='email_tpl_subject']").value,
+        body_html: emailTplForm.querySelector("[name='email_tpl_body']").value,
+      };
+      try {
+        const response = await fetch("/email-template/save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        });
+        const result = await response.json();
+        if (!response.ok) {
+          showFlash(result.error || "No se pudo guardar la plantilla.", "error");
+          return;
+        }
+        showFlash("Plantilla de email guardada.", "success");
+      } catch (error) {
+        showFlash("Error de red al guardar plantilla de email.", "error");
+      }
+    });
+  }
+
+  /* --- Envio Masivo --- */
+  const envioMasivoBtn = document.getElementById("envioMasivoBtn");
+  if (envioMasivoBtn) {
+    const checkboxes = document.querySelectorAll(".envio-masivo-check");
+    const emptyMsg = document.getElementById("envioMasivoEmpty");
+    if (checkboxes.length === 0 && emptyMsg) {
+      emptyMsg.style.display = "block";
+      envioMasivoBtn.disabled = true;
+    }
+
+    const selectAllBtn = document.getElementById("envioMasivoSelectAll");
+    const deselectAllBtn = document.getElementById("envioMasivoDeselectAll");
+    if (selectAllBtn) {
+      selectAllBtn.addEventListener("click", () => {
+        checkboxes.forEach(cb => cb.checked = true);
+      });
+    }
+    if (deselectAllBtn) {
+      deselectAllBtn.addEventListener("click", () => {
+        checkboxes.forEach(cb => cb.checked = false);
+      });
+    }
+
+    envioMasivoBtn.addEventListener("click", async () => {
+      const selected = Array.from(checkboxes).filter(cb => cb.checked).map(cb => parseInt(cb.value));
+      if (selected.length === 0) {
+        showFlash("Selecciona al menos un monotributista.", "error");
+        return;
+      }
+      const anchor = document.getElementById("envioMasivoAnchor").value;
+      if (!confirm("Enviar el informe por email a " + selected.length + " monotributista(s)?")) {
+        return;
+      }
+
+      const statusEl = document.getElementById("envioMasivoStatus");
+      const resultEl = document.getElementById("envioMasivoResult");
+      envioMasivoBtn.disabled = true;
+      envioMasivoBtn.textContent = "Enviando...";
+      statusEl.textContent = "Procesando " + selected.length + " envio(s)...";
+      resultEl.style.display = "none";
+
+      try {
+        const response = await fetch("/envio-masivo", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ monotributista_ids: selected, anchor }),
+        });
+        const result = await response.json();
+        if (!response.ok) {
+          showFlash(result.error || "Error al procesar el envio masivo.", "error");
+          statusEl.textContent = "";
+        } else {
+          statusEl.textContent = "";
+          let msg = "Enviados: " + result.sent;
+          if (result.skipped > 0) msg += " | Sin email: " + result.skipped;
+          if (result.failed > 0) msg += " | Fallidos: " + result.failed;
+
+          resultEl.style.display = "block";
+          resultEl.textContent = "";
+          if (result.failed > 0) {
+            resultEl.style.background = "#fff3cd";
+            resultEl.style.border = "1px solid #ffc107";
+            const strong = document.createElement("strong");
+            strong.textContent = msg;
+            resultEl.appendChild(strong);
+            result.errors.forEach(function(e) {
+              const line = document.createElement("div");
+              line.textContent = "- " + (e.razon_social || e.id) + ": " + e.error;
+              line.style.fontSize = "13px";
+              resultEl.appendChild(line);
+            });
+          } else {
+            resultEl.style.background = "#d4edda";
+            resultEl.style.border = "1px solid #28a745";
+            const strong = document.createElement("strong");
+            strong.textContent = msg;
+            resultEl.appendChild(strong);
+          }
+        }
+      } catch (error) {
+        showFlash("Error de red al enviar emails.", "error");
+        statusEl.textContent = "";
+      } finally {
+        envioMasivoBtn.disabled = false;
+        envioMasivoBtn.textContent = "Enviar emails";
+      }
+    });
   }
 </script>
 {% endblock %}

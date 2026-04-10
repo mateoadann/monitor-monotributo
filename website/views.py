@@ -20,6 +20,7 @@ from website.auth_utils import admin_required, editor_required
 from website.models import (
     Categoria,
     CategoriaTope,
+    EmailTemplate,
     Factura,
     FacturaImport,
     Monotributista,
@@ -536,6 +537,7 @@ def dashboard():
                 "razon_social": item.razon_social,
                 "cuit": item.cuit,
                 "clave_fiscal": item.clave_fiscal,
+                "email": item.email or "",
                 "categoria_actual": item.categoria_actual.nombre if item.categoria_actual else "-",
                 "categoria_corresponde": corresponde_label,
                 "estado_categoria": estado,
@@ -564,6 +566,12 @@ def dashboard():
         if smtp_cfg
         else None
     )
+
+    email_tpl = EmailTemplate.get_or_default()
+    email_template_dict = {
+        "subject": email_tpl.subject,
+        "body_html": email_tpl.body_html,
+    }
 
     mono_form = session.pop("mono_form", None)
     open_modal = session.pop("open_modal", None)
@@ -615,6 +623,8 @@ def dashboard():
         can_manage_users=current_user.can_manage_users(),
         can_run_rpa=current_user.can_run_rpa(),
         smtp_config=smtp_config_dict,
+        email_template=email_template_dict,
+        has_smtp=smtp_cfg is not None,
     )
 
 
@@ -732,6 +742,16 @@ def create_monotributista():
     cuit = normalize_cuit(request.form.get("cuit"))
     clave_fiscal = request.form.get("clave_fiscal", "").strip()
     categoria_actual_id = request.form.get("categoria_actual_id")
+    email = request.form.get("email", "").strip()
+
+    def _mono_form_dict():
+        return {
+            "razon_social": razon_social,
+            "cuit": cuit,
+            "clave_fiscal": clave_fiscal,
+            "categoria_actual_id": categoria_actual_id or "",
+            "email": email,
+        }
 
     missing = []
     if not razon_social:
@@ -745,33 +765,18 @@ def create_monotributista():
     if missing:
         missing_label = ", ".join(missing)
         flash(f"Completa los campos requeridos: {missing_label}.", "error")
-        session["mono_form"] = {
-            "razon_social": razon_social,
-            "cuit": cuit,
-            "clave_fiscal": clave_fiscal,
-            "categoria_actual_id": categoria_actual_id or "",
-        }
+        session["mono_form"] = _mono_form_dict()
         session["open_modal"] = "monotributista"
         return redirect(url_for("main.dashboard", tab="monotributistas"))
     if not is_valid_cuit(cuit):
         flash("El CUIT debe tener 11 digitos y solo numeros.", "error")
-        session["mono_form"] = {
-            "razon_social": razon_social,
-            "cuit": cuit,
-            "clave_fiscal": clave_fiscal,
-            "categoria_actual_id": categoria_actual_id or "",
-        }
+        session["mono_form"] = _mono_form_dict()
         session["open_modal"] = "monotributista"
         return redirect(url_for("main.dashboard", tab="monotributistas"))
     existing = Monotributista.query.filter_by(cuit=cuit).first()
     if existing:
         flash("El CUIT ingresado ya existe.", "error")
-        session["mono_form"] = {
-            "razon_social": razon_social,
-            "cuit": cuit,
-            "clave_fiscal": clave_fiscal,
-            "categoria_actual_id": categoria_actual_id or "",
-        }
+        session["mono_form"] = _mono_form_dict()
         session["open_modal"] = "monotributista"
         return redirect(url_for("main.dashboard", tab="monotributistas"))
 
@@ -779,6 +784,7 @@ def create_monotributista():
         razon_social=razon_social,
         cuit=cuit,
         clave_fiscal=clave_fiscal,
+        email=email or None,
         categoria_actual_id=int(categoria_actual_id),
         categoria_corresponde_id=int(categoria_actual_id),
     )
@@ -955,9 +961,11 @@ def edit_monotributista(monotributista_id):
                     "categoria_actual_id": categoria_actual_id or "",
                 }
             else:
+                email = request.form.get("email", "").strip()
                 monotributista.razon_social = razon_social
                 monotributista.cuit = cuit
                 monotributista.clave_fiscal = clave_fiscal
+                monotributista.email = email or None
                 monotributista.categoria_actual_id = int(categoria_actual_id)
                 db.session.commit()
                 flash("Monotributista actualizado.", "success")
@@ -1901,3 +1909,110 @@ def smtp_delete():
     SmtpConfig.query.delete()
     db.session.commit()
     return jsonify({"ok": True})
+
+
+@main_bp.post("/email-template/save")
+@login_required
+@admin_required
+def email_template_save():
+    data = request.get_json(silent=True) or {}
+    subject = (data.get("subject") or "").strip()
+    body_html = (data.get("body_html") or "").strip()
+
+    if not subject:
+        return jsonify({"error": "El asunto es obligatorio."}), 400
+    if not body_html:
+        return jsonify({"error": "El cuerpo del email es obligatorio."}), 400
+
+    tpl = EmailTemplate.get_template()
+    if tpl:
+        tpl.subject = subject
+        tpl.body_html = body_html
+        tpl.updated_at = datetime.now(timezone.utc)
+    else:
+        tpl = EmailTemplate(subject=subject, body_html=body_html)
+        db.session.add(tpl)
+
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
+@main_bp.post("/envio-masivo")
+@login_required
+@admin_required
+def envio_masivo():
+    data = request.get_json(silent=True) or {}
+    mono_ids = data.get("monotributista_ids", [])
+    anchor_param = data.get("anchor")
+
+    if not mono_ids:
+        return jsonify({"error": "Seleccioná al menos un monotributista."}), 400
+
+    anchor_date = parse_anchor(anchor_param) or date.today().replace(day=1)
+    anchor_value = f"{anchor_date.year:04d}-{anchor_date.month:02d}"
+    vigencia = obtener_vigencia_para_fecha(anchor_date)
+    topes = obtener_topes_vigencia(vigencia)
+
+    tpl = EmailTemplate.get_or_default()
+
+    sent = 0
+    failed = 0
+    errors = []
+    skipped = 0
+
+    for mono_id in mono_ids:
+        mono = db.session.get(Monotributista, int(mono_id))
+        if not mono:
+            errors.append({"id": mono_id, "error": "Monotributista no encontrado"})
+            failed += 1
+            continue
+        if not mono.email:
+            skipped += 1
+            continue
+
+        try:
+            detalle = build_calculo(mono, anchor_date, topes)
+            meses = list(detalle["mensual"].keys())
+            periodo_label = f"{meses[0]} – {meses[-1]}" if meses else ""
+            generated_at = datetime.now(
+                ZoneInfo("America/Argentina/Cordoba")
+            ).strftime("%d/%m/%Y %H:%M")
+
+            pdf_bytes = generate_calculo_pdf(
+                detalle, mono.razon_social, mono.cuit, periodo_label, generated_at
+            )
+            filename = f"calculo_{mono.cuit}_{anchor_value}.pdf"
+
+            subject = tpl.subject.replace("{nombre}", mono.razon_social).replace(
+                "{periodo}", periodo_label
+            )
+            body = tpl.body_html.replace("{nombre}", mono.razon_social).replace(
+                "{periodo}", periodo_label
+            )
+
+            ok, message = send_email(
+                to=mono.email,
+                subject=subject,
+                body_html=body,
+                attachments=[(filename, pdf_bytes, "application/pdf")],
+            )
+
+            if ok:
+                sent += 1
+            else:
+                failed += 1
+                errors.append(
+                    {"id": mono.id, "razon_social": mono.razon_social, "error": message}
+                )
+        except Exception as e:
+            failed += 1
+            errors.append(
+                {"id": mono.id, "razon_social": mono.razon_social, "error": str(e)}
+            )
+
+    return jsonify({
+        "sent": sent,
+        "failed": failed,
+        "skipped": skipped,
+        "errors": errors,
+    })

@@ -80,6 +80,7 @@ class Monotributista(db.Model):
     razon_social = db.Column(db.String(160), nullable=False)
     cuit = db.Column(db.String(20), nullable=False, unique=True)
     clave_fiscal = db.Column(db.String(120), nullable=False)
+    email = db.Column(db.String(255), nullable=True)
     categoria_actual_id = db.Column(db.Integer, db.ForeignKey("categoria.id"))
     categoria_corresponde_id = db.Column(db.Integer, db.ForeignKey("categoria.id"))
 
@@ -126,6 +127,40 @@ class SmtpConfig(db.Model):
     @classmethod
     def get_config(cls) -> SmtpConfig | None:
         return cls.query.first()
+
+
+class EmailTemplate(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    subject = db.Column(
+        db.String(255),
+        nullable=False,
+        default="Situación Monotributo - {periodo}",
+    )
+    body_html = db.Column(
+        db.Text,
+        nullable=False,
+        default=(
+            "<p>Hola {nombre},</p>"
+            "<p>Te adjuntamos el informe de tu situación de monotributo "
+            "correspondiente al período <strong>{periodo}</strong>.</p>"
+            "<p>Ante cualquier duda, no dudes en consultarnos.</p>"
+            "<p>Saludos,<br>Monitor Monotributo</p>"
+        ),
+    )
+    updated_at = db.Column(
+        db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
+
+    @classmethod
+    def get_template(cls) -> EmailTemplate | None:
+        return cls.query.first()
+
+    @classmethod
+    def get_or_default(cls) -> EmailTemplate:
+        tpl = cls.query.first()
+        if tpl:
+            return tpl
+        return cls()
 
 
 class FacturaImport(db.Model):
