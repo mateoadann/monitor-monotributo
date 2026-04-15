@@ -407,6 +407,24 @@ button.stat:focus-visible {
   color: var(--navy-40);
 }
 
+.pdf-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border: 2px solid var(--blue);
+  border-radius: 10px;
+  color: var(--blue);
+  text-decoration: none;
+  transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+.pdf-icon-btn:hover {
+  background: var(--blue);
+  color: #fff;
+}
+
 .panel__hint {
   color: var(--navy-40);
   font-size: 13px;

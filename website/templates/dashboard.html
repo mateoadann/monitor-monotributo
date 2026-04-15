@@ -251,6 +251,15 @@
         <h2>Calculo de facturacion anual</h2>
         <p>Selecciona un monotributista para ver el detalle mensual.</p>
       </div>
+      {% if detalle %}
+      <a class="pdf-icon-btn" href="/calculo/{{ seleccionado_id }}/pdf?anchor={{ anchor_value }}" target="_blank" title="Exportar PDF">
+        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+          <polyline points="14 2 14 8 20 8"></polyline>
+          <text x="7" y="17" font-size="5.5" font-weight="bold" fill="currentColor" stroke="none" font-family="Arial, sans-serif">PDF</text>
+        </svg>
+      </a>
+      {% endif %}
       <form class="selector selector--calculo" method="get">
         <input type="hidden" name="tab" value="calculo">
         <input type="hidden" name="anchor" value="{{ anchor_value }}">
@@ -349,7 +358,6 @@
           </label>
           <button class="outline" type="submit">Ver periodo</button>
         </form>
-        <a class="outline" href="/calculo/{{ seleccionado_id }}/pdf?anchor={{ anchor_value }}" target="_blank">Exportar PDF</a>
       </div>
     </div>
     {% else %}

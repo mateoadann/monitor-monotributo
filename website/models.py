@@ -160,7 +160,16 @@ class EmailTemplate(db.Model):
         tpl = cls.query.first()
         if tpl:
             return tpl
-        return cls()
+        return cls(
+            subject="Situación Monotributo - {periodo}",
+            body_html=(
+                "<p>Hola {nombre},</p>"
+                "<p>Te adjuntamos el informe de tu situación de monotributo "
+                "correspondiente al período <strong>{periodo}</strong>.</p>"
+                "<p>Ante cualquier duda, no dudes en consultarnos.</p>"
+                "<p>Saludos,<br>Monitor Monotributo</p>"
+            ),
+        )
 
 
 class RpaSchedule(db.Model):
