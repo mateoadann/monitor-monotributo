@@ -284,7 +284,8 @@
       <div class="calculo__main">
         <div class="calculo__grid">
           {% for mes, total in detalle.mensual.items() %}
-          <div class="month-card">
+          {% set mk = detalle.month_keys[loop.index0] %}
+          <div class="month-card" data-year="{{ mk[0] }}" data-month="{{ mk[1] }}" data-mono-id="{{ seleccionado_id }}" data-anchor="{{ anchor_value }}">
             <span>{{ mes }}</span>
             <strong>{{ total }}</strong>
           </div>
@@ -1036,6 +1037,40 @@
         <span>&nbsp;</span>
         <strong>&nbsp;</strong>
       </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal modal--wide" data-modal="detalle-mes">
+  <div class="modal__content">
+    <div class="modal__header">
+      <h3 data-detalle-title>Detalle</h3>
+      <button class="modal__close" type="button" data-close>&times;</button>
+    </div>
+    <div data-detalle-loading style="display:none; text-align:center; padding:40px;">
+      Cargando...
+    </div>
+    <div class="table" data-detalle-table style="display:none;">
+      <div class="table__row table__row--detalle table__head">
+        <span>Nro Comprobante</span>
+        <span>Tipo</span>
+        <span>Desde</span>
+        <span>Hasta</span>
+        <span>Importe Total</span>
+        <span>Importe Mes</span>
+      </div>
+      <div data-detalle-body></div>
+      <div class="table__row table__row--detalle table__foot" data-detalle-footer>
+        <span></span>
+        <span></span>
+        <span></span>
+        <span></span>
+        <span><strong>Total</strong></span>
+        <span><strong data-detalle-total></strong></span>
+      </div>
+    </div>
+    <div data-detalle-empty style="display:none; padding:40px;">
+      <p class="empty">No hay facturas para este mes.</p>
     </div>
   </div>
 </div>
@@ -2119,6 +2154,121 @@
   if (autoOpenModal) {
     openModal(autoOpenModal);
   }
+
+  // --- Detalle facturas por mes ---
+  const MONTH_NAMES = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+  const detalleModal = document.querySelector("[data-modal='detalle-mes']");
+  const detalleTitle = detalleModal ? detalleModal.querySelector("[data-detalle-title]") : null;
+  const detalleLoading = detalleModal ? detalleModal.querySelector("[data-detalle-loading]") : null;
+  const detalleTable = detalleModal ? detalleModal.querySelector("[data-detalle-table]") : null;
+  const detalleBody = detalleModal ? detalleModal.querySelector("[data-detalle-body]") : null;
+  const detalleFooter = detalleModal ? detalleModal.querySelector("[data-detalle-footer]") : null;
+  const detalleTotal = detalleModal ? detalleModal.querySelector("[data-detalle-total]") : null;
+  const detalleEmpty = detalleModal ? detalleModal.querySelector("[data-detalle-empty]") : null;
+
+  const formatCurrency = (value) => {
+    const num = parseFloat(value);
+    if (isNaN(num)) return value;
+    const sign = num < 0 ? "-" : "";
+    const abs = Math.abs(num);
+    const whole = Math.floor(abs);
+    const cents = Math.round((abs - whole) * 100);
+    const wholeStr = whole.toLocaleString("es-AR").replace(/,/g, ".");
+    return `${sign}$ ${wholeStr},${String(cents).padStart(2, "0")}`;
+  };
+
+  const createDetalleRow = (cells, className) => {
+    const row = document.createElement("div");
+    row.className = className || "table__row table__row--detalle";
+    cells.forEach((text) => {
+      const span = document.createElement("span");
+      span.textContent = text;
+      row.appendChild(span);
+    });
+    return row;
+  };
+
+  document.querySelectorAll(".month-card[data-year][data-month]").forEach((card) => {
+    card.addEventListener("click", () => {
+      const year = card.dataset.year;
+      const month = card.dataset.month;
+      const monoId = card.dataset.monoId;
+      const anchor = card.dataset.anchor;
+
+      if (!year || !month || !monoId) return;
+
+      const monthLabel = `${MONTH_NAMES[parseInt(month, 10) - 1]} ${year}`;
+      if (detalleTitle) detalleTitle.textContent = `Detalle \u2014 ${monthLabel}`;
+      if (detalleLoading) detalleLoading.style.display = "block";
+      if (detalleTable) detalleTable.style.display = "none";
+      if (detalleEmpty) detalleEmpty.style.display = "none";
+      if (detalleBody) detalleBody.textContent = "";
+
+      openModal("detalle-mes");
+
+      const url = `/api/calculo/${monoId}/mes/${year}/${month}` + (anchor ? `?anchor=${anchor}` : "");
+      fetch(url)
+        .then((res) => res.json())
+        .then((data) => {
+          if (detalleLoading) detalleLoading.style.display = "none";
+
+          if (!data || data.length === 0) {
+            if (detalleEmpty) detalleEmpty.style.display = "block";
+            if (detalleFooter) detalleFooter.style.display = "none";
+            return;
+          }
+
+          let totalMes = 0;
+          data.forEach((item) => {
+            const importeMes = parseFloat(item.importe_mes) || 0;
+            totalMes += importeMes;
+            const row = createDetalleRow([
+              item.numero_comp,
+              item.tipo_comp,
+              item.fecha_desde,
+              item.fecha_hasta,
+              formatCurrency(item.importe_total),
+              formatCurrency(item.importe_mes),
+            ]);
+            if (detalleBody) detalleBody.appendChild(row);
+          });
+
+          // Check for rounding adjustment vs card total
+          const cardTotal = card.querySelector("strong");
+          if (cardTotal) {
+            const cardText = cardTotal.textContent.trim();
+            const cleaned = cardText.replace(/\$/g, "").replace(/\./g, "").replace(",", ".").trim();
+            const cardValue = parseFloat(cleaned);
+            if (!isNaN(cardValue)) {
+              const diff = cardValue - totalMes;
+              if (Math.abs(diff) > 0.01) {
+                const adjRow = createDetalleRow([
+                  "Ajuste redondeo", "", "", "", "",
+                  formatCurrency(diff.toFixed(2)),
+                ]);
+                if (detalleBody) detalleBody.appendChild(adjRow);
+                totalMes += diff;
+              }
+            }
+          }
+
+          if (detalleTotal) detalleTotal.textContent = formatCurrency(totalMes.toFixed(2));
+          if (detalleFooter) detalleFooter.style.display = "";
+          if (detalleTable) detalleTable.style.display = "";
+        })
+        .catch(() => {
+          if (detalleLoading) detalleLoading.style.display = "none";
+          if (detalleEmpty) {
+            detalleEmpty.textContent = "";
+            const errP = document.createElement("p");
+            errP.className = "empty";
+            errP.textContent = "Error al cargar el detalle.";
+            detalleEmpty.appendChild(errP);
+            detalleEmpty.style.display = "block";
+          }
+        });
+    });
+  });
 
   const importsModal = document.querySelector("[data-modal='factura-imports']");
   const importsBody = document.querySelector("[data-imports-body]");

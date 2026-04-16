@@ -366,10 +366,93 @@ def calcular_totales(monotributista: Monotributista, anchor: date):
     return month_totals, total
 
 
+def calcular_detalle_mes(
+    monotributista: Monotributista, anchor: date, target_year: int, target_month: int
+) -> list[dict]:
+    """Return per-invoice prorated contributions for a single month.
+
+    Each dict: {
+        "numero_comp": str,
+        "tipo_comp": str,
+        "importe_total": str,    # "12345.67"
+        "fecha_desde": str,      # "YYYY-MM-DD"
+        "fecha_hasta": str,      # "YYYY-MM-DD"
+        "importe_mes": str       # "3456.78" (prorated for target month)
+    }
+    """
+    months = last_12_months(anchor)
+    if (target_year, target_month) not in months:
+        return []
+
+    result = []
+    facturas = Factura.query.filter_by(monotributista_id=monotributista.id).all()
+    for factura in facturas:
+        importe_total = factura.importe_total
+        tipo_comp = factura.tipo_comp.upper() if factura.tipo_comp else ""
+        if tipo_comp in CREDIT_NOTE_TYPES and importe_total > 0:
+            importe_total = -importe_total
+
+        start = factura.fecha_desde or factura.fecha_hasta or factura.fecha
+        end = factura.fecha_hasta or factura.fecha_desde or factura.fecha
+
+        if not start or not end:
+            continue
+
+        if end < start:
+            start, end = end, start
+
+        if start.year == end.year and start.month == end.month:
+            if start.year == target_year and start.month == target_month:
+                result.append({
+                    "numero_comp": factura.numero_comp or "",
+                    "tipo_comp": factura.tipo_comp or "",
+                    "importe_total": f"{importe_total:.2f}",
+                    "fecha_desde": start.strftime("%d/%m/%Y"),
+                    "fecha_hasta": end.strftime("%d/%m/%Y"),
+                    "importe_mes": f"{importe_total:.2f}",
+                })
+            continue
+
+        total_days = (end - start).days + 1
+        if total_days <= 0:
+            if start.year == target_year and start.month == target_month:
+                result.append({
+                    "numero_comp": factura.numero_comp or "",
+                    "tipo_comp": factura.tipo_comp or "",
+                    "importe_total": f"{importe_total:.2f}",
+                    "fecha_desde": start.strftime("%d/%m/%Y"),
+                    "fecha_hasta": end.strftime("%d/%m/%Y"),
+                    "importe_mes": f"{importe_total:.2f}",
+                })
+            continue
+
+        daily_amount = importe_total / Decimal(total_days)
+        days_in_month = Decimal(0)
+        current = start
+        while current <= end:
+            if current.year == target_year and current.month == target_month:
+                days_in_month += 1
+            current += timedelta(days=1)
+
+        if days_in_month > 0:
+            importe_mes = daily_amount * days_in_month
+            result.append({
+                "numero_comp": factura.numero_comp or "",
+                "tipo_comp": factura.tipo_comp or "",
+                "importe_total": f"{importe_total:.2f}",
+                "fecha_desde": start.strftime("%d/%m/%Y"),
+                "fecha_hasta": end.strftime("%d/%m/%Y"),
+                "importe_mes": f"{importe_mes:.2f}",
+            })
+
+    return result
+
+
 def build_calculo(
     monotributista: Monotributista, anchor: date, topes: list[CategoriaTope]
 ):
     month_totals, total = calcular_totales(monotributista, anchor)
+    month_keys = list(last_12_months(anchor))
     topes_map = topes_por_categoria(topes)
     categoria_actual = monotributista.categoria_actual
     exclusion = is_exclusion(total, topes)
@@ -415,6 +498,7 @@ def build_calculo(
         "estado_categoria": estado,
         "total_12m": format_currency(total),
         "mensual": {label: format_currency(value) for label, value in month_totals.items()},
+        "month_keys": month_keys,
         "margen_exclusion": margen_exclusion,
         "margen_categoria": margen_categoria,
         "margen_siguiente": margen_siguiente,
@@ -674,6 +758,20 @@ def facturas_api():
             "can_edit": can_edit,
         }
     )
+
+
+@main_bp.get("/api/calculo/<int:mono_id>/mes/<int:year>/<int:month>")
+@login_required
+def api_calculo_mes(mono_id, year, month):
+    monotributista = db.session.get(Monotributista, mono_id)
+    if not monotributista:
+        return jsonify([])
+    anchor_param = request.args.get("anchor")
+    anchor = parse_anchor(anchor_param) if anchor_param else None
+    if not anchor:
+        anchor = date.today().replace(day=1)
+    result = calcular_detalle_mes(monotributista, anchor, year, month)
+    return jsonify(result)
 
 
 @main_bp.post("/monotributistas/create")
