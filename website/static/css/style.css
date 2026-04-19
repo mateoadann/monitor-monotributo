@@ -972,6 +972,16 @@ button.stat:focus-visible {
   grid-template-columns: 1fr 1.5fr 1fr 0.8fr 0.8fr;
 }
 
+.table__row--detalle {
+  grid-template-columns: 1.4fr 0.6fr 1fr 1fr 1fr 1fr;
+  font-size: 13px;
+}
+
+.table__foot {
+  border-top: 2px solid #d8dce6;
+  background: #f0f2f7;
+}
+
 .table__row--imports {
   grid-template-columns: 1.2fr 1.4fr 0.7fr 0.8fr 2fr 0.4fr;
 }
@@ -1455,6 +1465,16 @@ input[type="date"][data-air-picker="true"]::-webkit-calendar-picker-indicator {
   flex-direction: column;
   gap: 8px;
   animation: rise 0.6s ease-out;
+}
+
+.month-card {
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.month-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(20, 28, 52, 0.10);
 }
 
 .month-card span {
