@@ -488,64 +488,78 @@
 
     <!-- Modal programacion RPA -->
     <div class="modal" data-modal="rpa-schedule">
-      <div class="modal__backdrop" data-close></div>
-      <div class="modal__body">
-        <h3>Programacion RPA</h3>
-        <button class="modal__close" type="button" data-close aria-label="Cerrar">&times;</button>
-        <form id="rpaScheduleForm" class="panel__form">
+      <div class="modal__content modal__content--lg">
+        <div class="modal__header">
+          <h3>Programacion RPA</h3>
+          <button class="modal__close" type="button" data-close aria-label="Cerrar">&times;</button>
+        </div>
+        <form id="rpaScheduleForm" class="panel__form panel__form--rpa">
           <input type="hidden" name="sched_id" id="schedId">
           <label class="field">
             Nombre
             <input type="text" name="sched_name" id="schedName" placeholder="Ej: Proceso semanal" required>
           </label>
-          <fieldset style="border:1px solid #ddd; border-radius:6px; padding:10px 14px; margin-bottom:12px;">
-            <legend style="font-weight:600; font-size:14px;">Dias de la semana</legend>
-            <div style="display:flex; gap:12px; flex-wrap:wrap;">
-              <label style="display:flex; align-items:center; gap:4px;"><input type="checkbox" name="sched_dow" value="1"> Lun</label>
-              <label style="display:flex; align-items:center; gap:4px;"><input type="checkbox" name="sched_dow" value="2"> Mar</label>
-              <label style="display:flex; align-items:center; gap:4px;"><input type="checkbox" name="sched_dow" value="3"> Mie</label>
-              <label style="display:flex; align-items:center; gap:4px;"><input type="checkbox" name="sched_dow" value="4"> Jue</label>
-              <label style="display:flex; align-items:center; gap:4px;"><input type="checkbox" name="sched_dow" value="5"> Vie</label>
-              <label style="display:flex; align-items:center; gap:4px;"><input type="checkbox" name="sched_dow" value="6"> Sab</label>
-              <label style="display:flex; align-items:center; gap:4px;"><input type="checkbox" name="sched_dow" value="7"> Dom</label>
+
+          <div class="form-section">
+            <span class="form-section__title">Dias de la semana</span>
+            <div class="checklist checklist--grid">
+              <label class="checklist__item"><input type="checkbox" name="sched_dow" value="1"> Lun</label>
+              <label class="checklist__item"><input type="checkbox" name="sched_dow" value="2"> Mar</label>
+              <label class="checklist__item"><input type="checkbox" name="sched_dow" value="3"> Mie</label>
+              <label class="checklist__item"><input type="checkbox" name="sched_dow" value="4"> Jue</label>
+              <label class="checklist__item"><input type="checkbox" name="sched_dow" value="5"> Vie</label>
+              <label class="checklist__item"><input type="checkbox" name="sched_dow" value="6"> Sab</label>
+              <label class="checklist__item"><input type="checkbox" name="sched_dow" value="7"> Dom</label>
             </div>
-          </fieldset>
+          </div>
+
           <div class="form-grid">
             <label class="field">
-              Hora
-              <input type="number" name="sched_hour" id="schedHour" min="0" max="23" value="8" required>
+              Cantidad de dias anteriores
+              <input type="number" name="sched_lookback_days" id="schedLookbackDays" min="1" max="730" value="365">
             </label>
             <label class="field">
-              Minutos
-              <input type="number" name="sched_minute" id="schedMinute" min="0" max="59" value="0" required>
+              Hora de ejecucion
+              <input type="text" id="schedTime" placeholder="08:00" readonly>
             </label>
           </div>
-          <fieldset style="border:1px solid #ddd; border-radius:6px; padding:10px 14px; margin-bottom:12px;">
-            <legend style="font-weight:600; font-size:14px;">Monotributistas a procesar</legend>
-            <div style="margin-bottom:8px;">
-              <button class="outline outline--sm" type="button" id="schedSelectAll">Todos</button>
-              <button class="outline outline--sm" type="button" id="schedSelectNone">Ninguno</button>
+          <p class="form-hint">Cantidad de dias hacia atras desde la fecha de ejecucion. Ejemplo: 365 equivale a los ultimos 12 meses aproximadamente.</p>
+          <p class="form-hint" id="schedLookbackPreview"></p>
+
+          <details class="rpa-collapse" data-sched-section="monotributistas">
+            <summary>Monotributistas a procesar</summary>
+            <div class="rpa-collapse__body">
+              <div class="rpa-collapse__actions">
+                <input class="field__search" type="text" placeholder="Buscar razon social" data-sched-monos-search>
+                <button class="outline outline--sm" type="button" id="schedSelectAll">Todos</button>
+                <button class="outline outline--sm" type="button" id="schedSelectNone">Ninguno</button>
+              </div>
+              <div class="checklist checklist--scroll" data-sched-monos-list>
+                {% for item in monotributistas_select %}
+                <label class="checklist__item" data-search="{{ item.razon_social | lower }}">
+                  <input type="checkbox" name="sched_monos" value="{{ item.id }}">
+                  {{ item.razon_social }} ({{ item.cuit }})
+                </label>
+                {% endfor %}
+              </div>
             </div>
-            <div class="checklist checklist--scroll" style="max-height:200px;">
-              {% for item in monotributistas_select %}
-              <label class="checklist__item" style="display:flex; align-items:center; gap:6px;">
-                <input type="checkbox" name="sched_monos" value="{{ item.id }}">
-                {{ item.razon_social }} ({{ item.cuit }})
-              </label>
-              {% endfor %}
-            </div>
-          </fieldset>
-          <label class="field" style="flex-direction:row; align-items:center; gap:8px; margin-bottom:8px;">
-            <input type="checkbox" name="sched_send_report" id="schedSendReport" checked style="width:auto;">
-            Enviar reporte por email al finalizar
-          </label>
-          <label class="field" id="schedReportEmailField">
-            Email para reporte (dejar vacio para usar el email SMTP)
-            <input type="email" name="sched_report_email" id="schedReportEmail" placeholder="ejemplo@mail.com">
-          </label>
-          <div style="display:flex; gap:10px; margin-top:12px;">
-            <button class="primary" type="submit">Guardar</button>
+          </details>
+
+          <div class="form-section">
+            <span class="form-section__title">Reporte</span>
+            <label class="checklist__item">
+              <input type="checkbox" name="sched_send_report" id="schedSendReport" checked>
+              Enviar reporte por email al finalizar
+            </label>
+            <label class="field" id="schedReportEmailField">
+              Email para reporte (dejar vacio para usar el email SMTP)
+              <input type="email" name="sched_report_email" id="schedReportEmail" placeholder="ejemplo@mail.com">
+            </label>
+          </div>
+
+          <div class="modal__actions">
             <button class="outline" type="button" data-close>Cancelar</button>
+            <button class="primary" type="submit">Guardar</button>
           </div>
         </form>
       </div>
@@ -2137,34 +2151,34 @@
     document.body.classList.toggle("modal-open", Boolean(hasOpen));
   };
 
+  const airDatepickerLocaleEs = {
+    days: ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"],
+    daysShort: ["Dom", "Lun", "Mar", "Mie", "Jue", "Vie", "Sab"],
+    daysMin: ["Do", "Lu", "Ma", "Mi", "Ju", "Vi", "Sa"],
+    months: [
+      "Enero",
+      "Febrero",
+      "Marzo",
+      "Abril",
+      "Mayo",
+      "Junio",
+      "Julio",
+      "Agosto",
+      "Septiembre",
+      "Octubre",
+      "Noviembre",
+      "Diciembre",
+    ],
+    monthsShort: ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"],
+    today: "Hoy",
+    clear: "Limpiar",
+    dateFormat: "dd/MM/yyyy",
+    timeFormat: "HH:mm",
+    firstDay: 1,
+  };
+
   const monthPickerInputs = document.querySelectorAll("[data-month-picker]");
   if (monthPickerInputs.length) {
-    const airDatepickerLocaleEs = {
-      days: ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"],
-      daysShort: ["Dom", "Lun", "Mar", "Mie", "Jue", "Vie", "Sab"],
-      daysMin: ["Do", "Lu", "Ma", "Mi", "Ju", "Vi", "Sa"],
-      months: [
-        "Enero",
-        "Febrero",
-        "Marzo",
-        "Abril",
-        "Mayo",
-        "Junio",
-        "Julio",
-        "Agosto",
-        "Septiembre",
-        "Octubre",
-        "Noviembre",
-        "Diciembre",
-      ],
-      monthsShort: ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"],
-      today: "Hoy",
-      clear: "Limpiar",
-      dateFormat: "dd/MM/yyyy",
-      timeFormat: "hh:mm aa",
-      firstDay: 1,
-    };
-
     const parseAnchorValue = (value) => {
       if (!value) {
         return null;
@@ -3128,6 +3142,81 @@
   const schedSelectNone = document.getElementById("schedSelectNone");
   const schedSendReport = document.getElementById("schedSendReport");
   const schedReportEmailField = document.getElementById("schedReportEmailField");
+  const schedLookbackDays = document.getElementById("schedLookbackDays");
+  const schedLookbackPreview = document.getElementById("schedLookbackPreview");
+
+  // --- Timepicker with AirDatepicker ---
+  let schedTimePicker = null;
+  const schedTimeInput = document.getElementById("schedTime");
+  if (schedTimeInput && window.AirDatepicker) {
+    schedTimePicker = new AirDatepicker(schedTimeInput, {
+      onlyTimepicker: true,
+      timepicker: true,
+      locale: airDatepickerLocaleEs,
+      timeFormat: "HH:mm",
+      selectedDates: [new Date(2000, 0, 1, 8, 0)],
+      onSelect: ({ date }) => {
+        const d = Array.isArray(date) ? date[0] : date;
+        if (d) {
+          const hh = String(d.getHours()).padStart(2, "0");
+          const mm = String(d.getMinutes()).padStart(2, "0");
+          schedTimeInput.value = hh + ":" + mm;
+        }
+      },
+    });
+    schedTimeInput.value = "08:00";
+  }
+
+  function getSchedTime() {
+    const val = (schedTimeInput ? schedTimeInput.value : "08:00") || "08:00";
+    const parts = val.split(":");
+    return { hour: parseInt(parts[0], 10) || 8, minute: parseInt(parts[1], 10) || 0 };
+  }
+
+  function setSchedTime(hour, minute) {
+    const hh = String(hour).padStart(2, "0");
+    const mm = String(minute).padStart(2, "0");
+    if (schedTimeInput) schedTimeInput.value = hh + ":" + mm;
+    if (schedTimePicker) {
+      schedTimePicker.selectDate(new Date(2000, 0, 1, hour, minute));
+    }
+  }
+
+  // --- Lookback days preview ---
+  function updateLookbackPreview() {
+    if (!schedLookbackPreview || !schedLookbackDays) return;
+    const days = parseInt(schedLookbackDays.value, 10);
+    if (!days || days < 1 || days > 730) {
+      schedLookbackPreview.textContent = "";
+      return;
+    }
+    const today = new Date();
+    const desde = new Date(today);
+    desde.setDate(desde.getDate() - days);
+    const fmt = (d) => String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0") + "/" + d.getFullYear();
+    schedLookbackPreview.textContent = "Si se ejecutara hoy: " + fmt(desde) + " → " + fmt(today);
+  }
+  if (schedLookbackDays) {
+    schedLookbackDays.addEventListener("input", updateLookbackPreview);
+    updateLookbackPreview();
+  }
+
+  // --- Monotributista search filter ---
+  const schedMonoSearch = document.querySelector("[data-sched-monos-search]");
+  const schedMonoList = document.querySelector("[data-sched-monos-list]");
+  if (schedMonoSearch && schedMonoList) {
+    schedMonoSearch.addEventListener("input", () => {
+      const query = schedMonoSearch.value.toLowerCase().trim();
+      schedMonoList.querySelectorAll(".checklist__item").forEach(item => {
+        const searchVal = item.getAttribute("data-search") || "";
+        if (!query || searchVal.includes(query)) {
+          item.removeAttribute("hidden");
+        } else {
+          item.setAttribute("hidden", "");
+        }
+      });
+    });
+  }
 
   function openSchedModal() {
     if (schedModal) {
@@ -3141,18 +3230,24 @@
     schedForm.reset();
     document.getElementById("schedId").value = "";
     schedForm.querySelectorAll("input[name='sched_dow']").forEach(cb => cb.checked = false);
-    schedForm.querySelectorAll("input[name='sched_monos']").forEach(cb => cb.checked = false);
-    document.getElementById("schedHour").value = "8";
-    document.getElementById("schedMinute").value = "0";
+    schedForm.querySelectorAll("input[name='sched_monos']").forEach(cb => {
+      cb.checked = false;
+      cb.closest(".checklist__item").removeAttribute("hidden");
+    });
+    setSchedTime(8, 0);
+    if (schedLookbackDays) schedLookbackDays.value = "365";
+    updateLookbackPreview();
     document.getElementById("schedSendReport").checked = true;
     if (schedReportEmailField) schedReportEmailField.style.display = "";
+    if (schedMonoSearch) schedMonoSearch.value = "";
   }
 
   function fillSchedForm(sched) {
     document.getElementById("schedId").value = sched.id || "";
     document.getElementById("schedName").value = sched.name || "";
-    document.getElementById("schedHour").value = sched.hour ?? 8;
-    document.getElementById("schedMinute").value = sched.minute ?? 0;
+    setSchedTime(sched.hour ?? 8, sched.minute ?? 0);
+    if (schedLookbackDays) schedLookbackDays.value = sched.lookback_days ?? 365;
+    updateLookbackPreview();
     document.getElementById("schedSendReport").checked = sched.send_report !== false;
     document.getElementById("schedReportEmail").value = sched.report_email || "";
     if (schedReportEmailField) {
@@ -3168,6 +3263,7 @@
     schedForm.querySelectorAll("input[name='sched_monos']").forEach(cb => {
       cb.checked = monoIds.includes(cb.value);
     });
+    if (schedMonoSearch) schedMonoSearch.value = "";
   }
 
   if (schedNewBtn) {
@@ -3179,7 +3275,9 @@
 
   if (schedSelectAll) {
     schedSelectAll.addEventListener("click", () => {
-      schedForm.querySelectorAll("input[name='sched_monos']").forEach(cb => cb.checked = true);
+      schedForm.querySelectorAll("input[name='sched_monos']").forEach(cb => {
+        if (!cb.closest(".checklist__item").hasAttribute("hidden")) cb.checked = true;
+      });
     });
   }
   if (schedSelectNone) {
@@ -3286,10 +3384,10 @@
       event.preventDefault();
       const id = document.getElementById("schedId").value;
       const name = document.getElementById("schedName").value.trim();
-      const hour = parseInt(document.getElementById("schedHour").value, 10);
-      const minute = parseInt(document.getElementById("schedMinute").value, 10);
+      const time = getSchedTime();
       const sendReport = document.getElementById("schedSendReport").checked;
       const reportEmail = document.getElementById("schedReportEmail").value.trim();
+      const lookbackDays = parseInt((document.getElementById("schedLookbackDays") || {}).value, 10) || 365;
 
       const days = Array.from(schedForm.querySelectorAll("input[name='sched_dow']:checked")).map(cb => cb.value);
       const monoIds = Array.from(schedForm.querySelectorAll("input[name='sched_monos']:checked")).map(cb => parseInt(cb.value, 10));
@@ -3297,9 +3395,10 @@
       const payload = {
         name,
         day_of_week: days.join(","),
-        hour,
-        minute,
+        hour: time.hour,
+        minute: time.minute,
         monotributista_ids: monoIds,
+        lookback_days: lookbackDays,
         send_report: sendReport,
         report_email: reportEmail,
       };

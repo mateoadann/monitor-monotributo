@@ -179,6 +179,7 @@ class RpaSchedule(db.Model):
     hour = db.Column(db.Integer, nullable=False, default=8)
     minute = db.Column(db.Integer, nullable=False, default=0)
     monotributista_ids = db.Column(db.Text, nullable=False, default="[]")  # JSON list
+    lookback_days = db.Column(db.Integer, nullable=False, default=365)
     send_report = db.Column(db.Boolean, nullable=False, default=True)
     report_email = db.Column(db.String(255), nullable=True)
     is_active = db.Column(db.Boolean, nullable=False, default=True)

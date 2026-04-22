@@ -1710,6 +1710,10 @@ input[type="date"][data-air-picker="true"]::-webkit-calendar-picker-indicator {
   flex-direction: column;
 }
 
+.modal__content--lg {
+  width: min(900px, 100%) !important;
+}
+
 .modal--wide .table {
   flex: 1;
   overflow-y: auto;

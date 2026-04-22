@@ -76,6 +76,23 @@ def _migrate_monotributista_email(app):
         db.session.commit()
 
 
+def _migrate_rpa_schedule_lookback(app):
+    """Agrega columna lookback_days a rpa_schedule si no existe (idempotente)."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(db.engine)
+    try:
+        columns = [col["name"] for col in inspector.get_columns("rpa_schedule")]
+    except Exception:
+        return
+
+    if "lookback_days" not in columns:
+        db.session.execute(
+            text("ALTER TABLE rpa_schedule ADD COLUMN lookback_days INTEGER NOT NULL DEFAULT 365")
+        )
+        db.session.commit()
+
+
 def create_app(init_db: bool = True):
     app = Flask(__name__)
     app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-change-me")
@@ -126,6 +143,7 @@ def create_app(init_db: bool = True):
             _migrate_user_table(app)
             _migrate_factura_import_table(app)
             _migrate_monotributista_email(app)
+            _migrate_rpa_schedule_lookback(app)
             create_admin_if_missing()
             seed_data()
 

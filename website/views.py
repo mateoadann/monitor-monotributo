@@ -668,6 +668,7 @@ def dashboard():
                 "hour": s.hour,
                 "minute": s.minute,
                 "monotributista_ids": s.get_monotributista_ids(),
+                "lookback_days": s.lookback_days,
                 "send_report": s.send_report,
                 "report_email": s.report_email or "",
                 "is_active": s.is_active,
@@ -2152,6 +2153,7 @@ def rpa_schedule_save():
     hour = data.get("hour")
     minute = data.get("minute")
     mono_ids = data.get("monotributista_ids", [])
+    lookback_days = data.get("lookback_days")
     send_report = bool(data.get("send_report", True))
     report_email = (data.get("report_email") or "").strip()
     schedule_id = data.get("id")
@@ -2172,6 +2174,16 @@ def rpa_schedule_save():
     if not (0 <= hour <= 23) or not (0 <= minute <= 59):
         return jsonify({"error": "Hora (0-23) y minutos (0-59) invalidos."}), 400
 
+    if lookback_days is not None:
+        try:
+            lookback_days = int(lookback_days)
+            if lookback_days < 1 or lookback_days > 730:
+                return jsonify({"error": "Los dias anteriores deben estar entre 1 y 730."}), 400
+        except (ValueError, TypeError):
+            return jsonify({"error": "Los dias anteriores deben ser un numero entero."}), 400
+    else:
+        lookback_days = 365
+
     if not isinstance(mono_ids, list) or not mono_ids:
         return jsonify({"error": "Selecciona al menos un monotributista."}), 400
 
@@ -2190,6 +2202,7 @@ def rpa_schedule_save():
     schedule.hour = hour
     schedule.minute = minute
     schedule.set_monotributista_ids(mono_ids)
+    schedule.lookback_days = lookback_days
     schedule.send_report = send_report
     schedule.report_email = report_email
     db.session.commit()

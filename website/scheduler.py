@@ -6,7 +6,6 @@ según día de semana y hora/minuto en zona horaria America/Argentina/Cordoba.
 
 from __future__ import annotations
 
-import json
 import logging
 import threading
 import time
@@ -35,7 +34,7 @@ def _matches_schedule(schedule, now: datetime) -> bool:
 def _run_scheduled_rpa(app, schedule_id: int) -> None:
     """Ejecuta el proceso RPA para un schedule y envía reporte por email."""
     with app.app_context():
-        from website.models import RpaSchedule, Monotributista, SmtpConfig, db
+        from website.models import RpaSchedule, Monotributista, db
         from website.queue import get_queue
         from website.rpa_jobs import run_rpa_chain
 
@@ -61,30 +60,19 @@ def _run_scheduled_rpa(app, schedule_id: int) -> None:
             db.session.commit()
             return
 
-        # Generar fechas: últimos 12 meses completos
+        # Generar fechas usando lookback_days del schedule
         now = datetime.now(TZ_AR)
-        # fecha_hasta = último día del mes anterior
-        first_of_month = now.replace(day=1)
-        from datetime import timedelta
-        last_day_prev = first_of_month - timedelta(days=1)
-        # fecha_desde = primer día de hace 11 meses desde last_day_prev
-        month = last_day_prev.month
-        year = last_day_prev.year
-        start_month = month - 11
-        start_year = year
-        if start_month <= 0:
-            start_month += 12
-            start_year -= 1
-        from datetime import date
-        fecha_desde_dt = date(start_year, start_month, 1)
-        fecha_hasta_dt = last_day_prev.date() if hasattr(last_day_prev, 'date') else last_day_prev
+        from datetime import timedelta, date
+        lookback_days = getattr(schedule, 'lookback_days', None) or 365
+        today = now.date() if hasattr(now, 'date') else now
+        fecha_hasta_dt = today
+        fecha_desde_dt = today - timedelta(days=lookback_days)
 
         fecha_desde = fecha_desde_dt.strftime("%d/%m/%Y")
         fecha_hasta = fecha_hasta_dt.strftime("%d/%m/%Y")
 
         batch_id = uuid.uuid4().hex
-        status = "success"
-        error_msg = None
+        status = "running"
 
         try:
             queue = get_queue()
@@ -96,6 +84,7 @@ def _run_scheduled_rpa(app, schedule_id: int) -> None:
                 None,   # tipos (default)
                 False,  # seleccionar_tipo
                 batch_id,
+                schedule_id=schedule_id,
                 job_timeout=600,
             )
             logger.info(
@@ -107,123 +96,10 @@ def _run_scheduled_rpa(app, schedule_id: int) -> None:
         except Exception as exc:
             logger.error("Schedule '%s': error al encolar: %s", schedule.name, exc)
             status = "failed"
-            error_msg = str(exc)
 
         schedule.last_run_at = datetime.now(TZ_AR)
         schedule.last_run_status = status
         db.session.commit()
-
-        # Enviar reporte por email
-        if schedule.send_report:
-            _send_schedule_report(
-                app, schedule, monos, valid_ids, batch_id,
-                fecha_desde, fecha_hasta, status, error_msg,
-            )
-
-
-def _send_schedule_report(
-    app, schedule, monos, valid_ids, batch_id,
-    fecha_desde, fecha_hasta, status, error_msg,
-) -> None:
-    """Envía email con resumen del proceso programado."""
-    with app.app_context():
-        from website.email_utils import send_email, get_smtp_config
-        from website.models import SmtpConfig
-
-        smtp_cfg = get_smtp_config()
-        if not smtp_cfg:
-            logger.warning("No hay SMTP configurado, no se envia reporte de schedule.")
-            return
-
-        report_email = schedule.report_email or smtp_cfg.from_email
-        if not report_email:
-            logger.warning("Sin email destino para reporte de schedule '%s'.", schedule.name)
-            return
-
-        now = datetime.now(TZ_AR)
-        mono_map = {m.id: m for m in monos}
-
-        rows_html = ""
-        for mid in valid_ids:
-            m = mono_map.get(mid)
-            name = m.razon_social if m else f"ID {mid}"
-            cuit = m.cuit if m else "-"
-            rows_html += (
-                f"<tr><td style='padding:6px 12px;border:1px solid #ddd;'>{name}</td>"
-                f"<td style='padding:6px 12px;border:1px solid #ddd;'>{cuit}</td>"
-                f"<td style='padding:6px 12px;border:1px solid #ddd;'>Encolado</td></tr>"
-            )
-
-        status_label = {
-            "success": "Exitoso",
-            "failed": "Fallido",
-            "partial": "Parcial",
-        }.get(status, status)
-
-        error_section = ""
-        if error_msg:
-            error_section = (
-                f"<p style='color:#9b2c2c;'><strong>Error:</strong> {error_msg}</p>"
-            )
-
-        body_html = f"""
-        <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
-            <h2 style="color:#242c4f;">Reporte de proceso RPA programado</h2>
-            <table style="width:100%;margin-bottom:16px;">
-                <tr>
-                    <td><strong>Programacion:</strong></td>
-                    <td>{schedule.name}</td>
-                </tr>
-                <tr>
-                    <td><strong>Fecha ejecucion:</strong></td>
-                    <td>{now.strftime("%d/%m/%Y %H:%M")}</td>
-                </tr>
-                <tr>
-                    <td><strong>Periodo procesado:</strong></td>
-                    <td>{fecha_desde} - {fecha_hasta}</td>
-                </tr>
-                <tr>
-                    <td><strong>Estado:</strong></td>
-                    <td>{status_label}</td>
-                </tr>
-                <tr>
-                    <td><strong>Monotributistas:</strong></td>
-                    <td>{len(valid_ids)}</td>
-                </tr>
-            </table>
-            {error_section}
-            <h3 style="color:#242c4f;">Detalle</h3>
-            <table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-                <thead>
-                    <tr style="background:#242c4f;color:#fff;">
-                        <th style="padding:8px 12px;text-align:left;">Razon social</th>
-                        <th style="padding:8px 12px;text-align:left;">CUIT</th>
-                        <th style="padding:8px 12px;text-align:left;">Estado</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {rows_html}
-                </tbody>
-            </table>
-            <p style="font-size:12px;color:#888;">
-                Este email fue generado automaticamente por Monitor Monotributo.
-            </p>
-        </div>
-        """
-
-        subject = f"Reporte RPA - {schedule.name} - {now.strftime('%d/%m/%Y %H:%M')}"
-        try:
-            ok, msg = send_email(
-                to=report_email,
-                subject=subject,
-                body_html=body_html,
-            )
-            if ok:
-                logger.info("Reporte de schedule '%s' enviado a %s.", schedule.name, report_email)
-            else:
-                logger.error("Error al enviar reporte de schedule '%s': %s", schedule.name, msg)
-        except Exception as exc:
-            logger.error("Excepcion enviando reporte de schedule '%s': %s", schedule.name, exc)
 
 
 def _scheduler_loop(app) -> None:
