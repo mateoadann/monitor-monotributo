@@ -10,6 +10,7 @@ def generate_calculo_pdf(
     cuit: str,
     periodo_label: str,
     generated_at: str,
+    last_rpa_date: str = "Sin procesamiento RPA registrado",
 ) -> bytes:
     """Render the calculo PDF template and return raw PDF bytes.
 
@@ -27,5 +28,6 @@ def generate_calculo_pdf(
         cuit=cuit,
         periodo_label=periodo_label,
         generated_at=generated_at,
+        last_rpa_date=last_rpa_date,
     )
     return weasyprint.HTML(string=rendered_html).write_pdf()

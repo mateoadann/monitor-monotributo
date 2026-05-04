@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import html
 from collections import OrderedDict
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -20,6 +21,7 @@ from website.auth_utils import admin_required, editor_required
 from website.models import (
     Categoria,
     CategoriaTope,
+    EmailMassSchedule,
     EmailTemplate,
     Factura,
     FacturaImport,
@@ -37,6 +39,14 @@ from website.queue import get_queue
 from website.rpa_jobs import run_rpa_chain
 
 main_bp = Blueprint("main", __name__)
+
+ADAIN_SIGNATURE_HTML = (
+    '<div style="margin-top: 24px; padding-top: 12px; border-top: 1px solid #eee; '
+    'text-align: center; font-size: 12px; color: #888;">'
+    'Desarrollado por <a href="https://adain.dev" target="_blank" rel="noopener" '
+    'style="color: #242c4f; text-decoration: none; font-weight: 600;">ADΛIN.DEV</a>'
+    '</div>'
+)
 
 MONTH_LABELS = [
     "Ene",
@@ -62,6 +72,7 @@ MONOTRIBUTISTA_IMPORT_REQUIRED_HEADERS = (
     "clave_fiscal",
     "categoria_actual",
 )
+MONOTRIBUTISTA_IMPORT_OPTIONAL_HEADERS = ("email",)
 
 
 def parse_date(value: str | None):
@@ -97,6 +108,25 @@ def format_datetime_ar(value: datetime | None) -> str:
         return value.strftime("%d/%m/%Y %H:%M")
 
 
+def get_last_rpa_date_label(monotributista_id: int) -> str:
+    """Devuelve 'DD/MM/YYYY' del último FacturaImport done (en horario Cordoba),
+    o 'Sin procesamiento RPA registrado' si no existe."""
+    last = (
+        FacturaImport.query
+        .filter(FacturaImport.monotributista_id == monotributista_id)
+        .filter(FacturaImport.status == "done")
+        .order_by(FacturaImport.processed_at.desc())
+        .first()
+    )
+    if not last or not last.processed_at:
+        return "Sin procesamiento RPA registrado"
+    cordoba_tz = ZoneInfo("America/Argentina/Cordoba")
+    processed_at = last.processed_at
+    if processed_at.tzinfo is None:
+        processed_at = processed_at.replace(tzinfo=timezone.utc)
+    return processed_at.astimezone(cordoba_tz).strftime("%d/%m/%Y")
+
+
 def split_numero_comp(value: str | None) -> tuple[str, str]:
     if not value:
         return "", ""
@@ -128,7 +158,23 @@ def normalize_csv_header(value: str | None) -> str:
     return (value or "").strip().lower().replace(" ", "_")
 
 
-def load_monotributistas_csv(uploaded_file) -> list[dict[str, str]]:
+def load_monotributistas_csv(
+    uploaded_file, update_existing: bool = False
+) -> tuple[list[dict[str, str]], set[str]]:
+    """Parsea el CSV de monotributistas.
+
+    Devuelve una tupla ``(rows, present_fields)`` donde ``present_fields`` es el
+    conjunto de campos editables (obligatorios + opcionales conocidos) que
+    realmente aparecen como columnas en el CSV. Esto permite distinguir
+    "columna ausente" (no se toca el campo) de "celda vacia" (tampoco se toca,
+    pero la columna existe).
+
+    Cuando ``update_existing`` es True, solo ``cuit`` es header obligatorio: el
+    resto pueden faltar si el usuario solo quiere actualizar emails de CUITs
+    existentes. La validacion de campos obligatorios para filas que terminen
+    creando un registro nuevo se aplica recien aguas abajo.
+    """
+
     raw_bytes = uploaded_file.read()
     if not raw_bytes:
         raise ValueError("El archivo CSV esta vacio.")
@@ -164,14 +210,27 @@ def load_monotributistas_csv(uploaded_file) -> list[dict[str, str]]:
         for header in reader.fieldnames
         if normalize_csv_header(header)
     }
-    missing_headers = [
-        header
-        for header in MONOTRIBUTISTA_IMPORT_REQUIRED_HEADERS
-        if header not in header_map
-    ]
-    if missing_headers:
-        missing_label = ", ".join(missing_headers)
-        raise ValueError(f"Faltan columnas requeridas en CSV: {missing_label}.")
+
+    if update_existing:
+        # En modo update solo cuit es obligatorio como header; el resto pueden
+        # faltar si todas las filas referencian CUITs ya existentes.
+        if "cuit" not in header_map:
+            raise ValueError("Faltan columnas requeridas en CSV: cuit.")
+    else:
+        missing_headers = [
+            header
+            for header in MONOTRIBUTISTA_IMPORT_REQUIRED_HEADERS
+            if header not in header_map
+        ]
+        if missing_headers:
+            missing_label = ", ".join(missing_headers)
+            raise ValueError(f"Faltan columnas requeridas en CSV: {missing_label}.")
+
+    known_fields = (
+        *MONOTRIBUTISTA_IMPORT_REQUIRED_HEADERS,
+        *MONOTRIBUTISTA_IMPORT_OPTIONAL_HEADERS,
+    )
+    present_fields = {field for field in known_fields if field in header_map}
 
     rows: list[dict[str, str]] = []
     for line_no, row in enumerate(reader, start=2):
@@ -179,7 +238,7 @@ def load_monotributistas_csv(uploaded_file) -> list[dict[str, str]]:
             continue
         parsed = {
             key: (row.get(header_map[key]) or "").strip()
-            for key in MONOTRIBUTISTA_IMPORT_REQUIRED_HEADERS
+            for key in present_fields
         }
         if not any(parsed.values()):
             continue
@@ -189,7 +248,7 @@ def load_monotributistas_csv(uploaded_file) -> list[dict[str, str]]:
     if not rows:
         raise ValueError("El CSV no tiene filas de datos para importar.")
 
-    return rows
+    return rows, present_fields
 
 
 def format_date(value: date | None) -> str:
@@ -636,6 +695,7 @@ def dashboard():
     if not seleccionado and monotributistas_raw:
         seleccionado = monotributistas_raw[0]
     detalle = build_calculo(seleccionado, anchor_date, topes_anchor) if seleccionado else None
+    last_rpa_date = get_last_rpa_date_label(seleccionado.id) if seleccionado else None
 
     smtp_cfg = SmtpConfig.get_config()
     smtp_config_dict = (
@@ -659,6 +719,7 @@ def dashboard():
     }
 
     rpa_schedules = []
+    email_mass_schedules = []
     if current_user.can_manage_config():
         rpa_schedules = [
             {
@@ -676,6 +737,40 @@ def dashboard():
                 "last_run_status": s.last_run_status,
             }
             for s in RpaSchedule.query.order_by(RpaSchedule.created_at.desc()).all()
+        ]
+        email_mass_schedules = [
+            {
+                "id": s.id,
+                "name": s.name,
+                "days_of_month": s.get_days_of_month(),
+                "days_of_month_csv": s.days_of_month or "",
+                "hour": s.hour,
+                "minute": s.minute,
+                "monos_mode": s.monos_mode,
+                "monotributista_ids": s.get_monotributista_ids(),
+                "categoria_id": s.categoria_id,
+                "categoria_nombre": s.categoria.nombre if s.categoria else None,
+                "lookback_days": s.lookback_days,
+                "send_report": s.send_report,
+                "report_email": s.report_email or "",
+                "is_active": s.is_active,
+                "last_run_at": s.last_run_at.strftime("%d/%m/%Y %H:%M") if s.last_run_at else None,
+                "last_run_status": s.last_run_status,
+                "monos_count": (
+                    Monotributista.query.count()
+                    if s.monos_mode == "todos"
+                    else (
+                        Monotributista.query.filter_by(
+                            categoria_actual_id=s.categoria_id
+                        ).count()
+                        if s.monos_mode == "por_categoria" and s.categoria_id
+                        else len(s.get_monotributista_ids())
+                    )
+                ),
+            }
+            for s in EmailMassSchedule.query.order_by(
+                EmailMassSchedule.created_at.desc()
+            ).all()
         ]
 
     mono_form = session.pop("mono_form", None)
@@ -710,6 +805,7 @@ def dashboard():
         seleccionado_id=seleccionado.id if seleccionado else None,
         seleccionado_label=seleccionado.razon_social if seleccionado else "",
         detalle=detalle,
+        last_rpa_date=last_rpa_date,
         active_tab=active_tab,
         anchor_value=anchor_value,
         anchor_cutoff_label=anchor_cutoff_label,
@@ -731,6 +827,7 @@ def dashboard():
         email_template=email_template_dict,
         has_smtp=smtp_cfg is not None,
         rpa_schedules=rpa_schedules,
+        email_mass_schedules=email_mass_schedules,
     )
 
 
@@ -751,8 +848,14 @@ def calculo_pdf(mono_id):
     generated_at = datetime.now(
         ZoneInfo("America/Argentina/Cordoba")
     ).strftime("%d/%m/%Y %H:%M")
+    last_rpa_date = get_last_rpa_date_label(mono.id)
     pdf_bytes = generate_calculo_pdf(
-        detalle, mono.razon_social, mono.cuit, periodo_label, generated_at
+        detalle,
+        mono.razon_social,
+        mono.cuit,
+        periodo_label,
+        generated_at,
+        last_rpa_date=last_rpa_date,
     )
     filename = f"calculo_{mono.cuit}_{anchor_value}.pdf"
     return send_file(
@@ -920,6 +1023,7 @@ def create_monotributista():
 def import_monotributistas_csv():
     csv_file = request.files.get("monotributistas_csv")
     dry_run = request.form.get("dry_run") == "1"
+    update_existing = request.form.get("update_existing") == "1"
 
     if not csv_file or not csv_file.filename:
         flash("Selecciona un archivo CSV para importar.", "error")
@@ -927,7 +1031,9 @@ def import_monotributistas_csv():
         return redirect(url_for("main.dashboard", tab="monotributistas"))
 
     try:
-        parsed_rows = load_monotributistas_csv(csv_file)
+        parsed_rows, present_fields = load_monotributistas_csv(
+            csv_file, update_existing=update_existing
+        )
     except ValueError as exc:
         flash(str(exc), "error")
         session["open_modal"] = "monotributistas-import"
@@ -936,57 +1042,110 @@ def import_monotributistas_csv():
     categorias = Categoria.query.order_by(Categoria.orden).all()
     categorias_by_code = {categoria.nombre.upper(): categoria for categoria in categorias}
 
-    seen_cuits = set()
-    valid_rows = []
-    errors = []
+    # Pre-fetch de monotributistas existentes para decidir si la fila es CREATE
+    # o UPDATE durante la validacion (la regla de obligatoriedad cambia segun
+    # caso cuando update_existing=True).
+    cuits_in_csv = []
+    for row in parsed_rows:
+        cuit_norm = normalize_cuit(row.get("cuit", ""))
+        if cuit_norm:
+            cuits_in_csv.append(cuit_norm)
+    existing_by_cuit: dict[str, Monotributista] = {}
+    if cuits_in_csv:
+        existing_rows = Monotributista.query.filter(
+            Monotributista.cuit.in_(cuits_in_csv)
+        ).all()
+        existing_by_cuit = {item.cuit: item for item in existing_rows}
+
+    seen_cuits: set[str] = set()
+    create_rows: list[dict] = []
+    update_rows: list[dict] = []
+    errors: list[str] = []
+
     for row in parsed_rows:
         line_no = row.get("line_no", "?")
-        razon_social = row["razon_social"].strip()
-        cuit = normalize_cuit(row["cuit"])
-        clave_fiscal = row["clave_fiscal"].strip()
-        categoria_code = row["categoria_actual"].strip().upper()
+        cuit = normalize_cuit(row.get("cuit", ""))
+        razon_social = row.get("razon_social", "").strip()
+        clave_fiscal = row.get("clave_fiscal", "").strip()
+        categoria_code = row.get("categoria_actual", "").strip().upper()
+        email_raw = row.get("email", "").strip()
 
-        row_errors = []
-        if not razon_social:
-            row_errors.append("razon_social vacia")
+        row_errors: list[str] = []
+
         if not cuit:
             row_errors.append("cuit vacio")
         elif not is_valid_cuit(cuit):
             row_errors.append("cuit invalido")
-        if not clave_fiscal:
-            row_errors.append("clave_fiscal vacia")
-        categoria = categorias_by_code.get(categoria_code)
-        if not categoria:
-            row_errors.append("categoria_actual invalida")
-        if cuit in seen_cuits:
+        if cuit and cuit in seen_cuits:
             row_errors.append("cuit duplicado en archivo")
+
+        is_update = bool(cuit) and cuit in existing_by_cuit and update_existing
+
+        # Resolver categoria si vino la columna y la celda tiene valor.
+        categoria_resolved = None
+        if "categoria_actual" in present_fields and categoria_code:
+            categoria_resolved = categorias_by_code.get(categoria_code)
+            if not categoria_resolved:
+                row_errors.append("categoria_actual invalida")
+
+        if is_update:
+            # Para UPDATE solo el cuit es obligatorio. Las celdas vacias
+            # significan "no tocar". Los valores con contenido SI deben ser
+            # validos (categoria_actual ya validada arriba si vino con valor).
+            pass
+        else:
+            # CREATE: aplican todas las validaciones de campos obligatorios.
+            if not razon_social:
+                row_errors.append("razon_social vacia")
+            if not clave_fiscal:
+                row_errors.append("clave_fiscal vacia")
+            if not categoria_resolved:
+                # Si la columna no esta o la celda esta vacia, falta la categoria.
+                if "categoria_actual" not in present_fields or not categoria_code:
+                    row_errors.append("categoria_actual invalida")
 
         if row_errors:
             errors.append(f"Fila {line_no}: {', '.join(row_errors)}")
             continue
 
         seen_cuits.add(cuit)
-        valid_rows.append(
-            {
-                "razon_social": razon_social,
-                "cuit": cuit,
-                "clave_fiscal": clave_fiscal,
-                "categoria": categoria,
-            }
-        )
 
-    cuits_to_check = [row["cuit"] for row in valid_rows]
-    existing_cuits = set()
-    if cuits_to_check:
-        existing_rows = Monotributista.query.filter(
-            Monotributista.cuit.in_(cuits_to_check)
-        ).all()
-        existing_cuits = {item.cuit for item in existing_rows}
+        if is_update:
+            update_rows.append(
+                {
+                    "cuit": cuit,
+                    "razon_social": razon_social,
+                    "clave_fiscal": clave_fiscal,
+                    "categoria": categoria_resolved,
+                    "email_raw": email_raw,
+                    "email_present": "email" in present_fields,
+                    "razon_social_present": "razon_social" in present_fields,
+                    "clave_fiscal_present": "clave_fiscal" in present_fields,
+                    "categoria_present": "categoria_actual" in present_fields,
+                }
+            )
+        else:
+            create_rows.append(
+                {
+                    "cuit": cuit,
+                    "razon_social": razon_social,
+                    "clave_fiscal": clave_fiscal,
+                    "categoria": categoria_resolved,
+                    "email": email_raw if "email" in present_fields else "",
+                }
+            )
 
     created = 0
+    updated = 0
+    unchanged = 0
     skipped_existing = 0
-    for row in valid_rows:
-        if row["cuit"] in existing_cuits:
+
+    # CREATE
+    for row in create_rows:
+        # Si update_existing=False y el cuit ya existe, se omite (comportamiento
+        # historico). Si update_existing=True nunca llega aca un cuit existente
+        # (esos van a update_rows).
+        if not update_existing and row["cuit"] in existing_by_cuit:
             skipped_existing += 1
             continue
         created += 1
@@ -998,8 +1157,37 @@ def import_monotributistas_csv():
             clave_fiscal=row["clave_fiscal"],
             categoria_actual_id=row["categoria"].id,
             categoria_corresponde_id=row["categoria"].id,
+            email=row["email"] or None,
         )
         db.session.add(monotributista)
+
+    # UPDATE (solo cuando update_existing=True)
+    for row in update_rows:
+        mono = existing_by_cuit[row["cuit"]]
+        changed = False
+
+        if row["razon_social_present"] and row["razon_social"]:
+            if row["razon_social"] != mono.razon_social:
+                mono.razon_social = row["razon_social"]
+                changed = True
+        if row["clave_fiscal_present"] and row["clave_fiscal"]:
+            if row["clave_fiscal"] != mono.clave_fiscal:
+                mono.clave_fiscal = row["clave_fiscal"]
+                changed = True
+        if row["categoria_present"] and row["categoria"] is not None:
+            if row["categoria"].id != mono.categoria_actual_id:
+                mono.categoria_actual_id = row["categoria"].id
+                changed = True
+        if row["email_present"] and row["email_raw"]:
+            current_email = mono.email or ""
+            if row["email_raw"] != current_email:
+                mono.email = row["email_raw"]
+                changed = True
+
+        if changed:
+            updated += 1
+        else:
+            unchanged += 1
 
     if dry_run:
         db.session.rollback()
@@ -1007,13 +1195,20 @@ def import_monotributistas_csv():
         db.session.commit()
 
     mode_label = "Simulacion" if dry_run else "Importacion"
-    flash(
-        f"{mode_label} finalizada: creados={created}, omitidos_existentes={skipped_existing}, errores={len(errors)}.",
-        "success",
-    )
-
-    if skipped_existing:
-        flash(f"Se omitieron {skipped_existing} CUIT ya existentes.", "success")
+    if update_existing:
+        flash(
+            f"{mode_label} finalizada: creados={created}, actualizados={updated}, "
+            f"sin_cambios={unchanged}, errores={len(errors)}.",
+            "csv_import",
+        )
+    else:
+        flash(
+            f"{mode_label} finalizada: creados={created}, omitidos_existentes={skipped_existing}, "
+            f"errores={len(errors)}.",
+            "csv_import",
+        )
+        if skipped_existing:
+            flash(f"Se omitieron {skipped_existing} CUIT ya existentes.", "success")
 
     if errors:
         session["open_modal"] = "monotributistas-import"
@@ -2057,6 +2252,35 @@ def email_template_save():
     return jsonify({"ok": True})
 
 
+@main_bp.post("/email-template/preview")
+@login_required
+@admin_required
+def email_template_preview():
+    payload = request.get_json(silent=True) or {}
+    subject = (payload.get("subject") or "").strip()
+    raw_body = (payload.get("body") or "").strip()
+
+    sample_nombre = "Juan Pérez"
+    sample_periodo = "Enero 2026"
+
+    subject_rendered = subject.replace("{nombre}", sample_nombre).replace(
+        "{periodo}", sample_periodo
+    )
+
+    escaped = html.escape(raw_body)
+    with_breaks = escaped.replace("\n", "<br>\n")
+    body_rendered = with_breaks.replace(
+        "{nombre}", html.escape(sample_nombre)
+    ).replace("{periodo}", html.escape(sample_periodo))
+
+    return jsonify(
+        {
+            "subject_rendered": subject_rendered,
+            "body_html_rendered": body_rendered,
+        }
+    )
+
+
 @main_bp.post("/envio-masivo")
 @login_required
 @admin_required
@@ -2106,9 +2330,15 @@ def envio_masivo():
             subject = tpl.subject.replace("{nombre}", mono.razon_social).replace(
                 "{periodo}", periodo_label
             )
-            body = tpl.body_html.replace("{nombre}", mono.razon_social).replace(
-                "{periodo}", periodo_label
-            )
+            # Escapar primero el cuerpo del usuario (texto plano) -> HTML seguro,
+            # luego \n a <br> para preservar saltos de linea, y al final reemplazar
+            # las variables escapando los valores tambien (por si tienen <, &, etc.).
+            escaped_body = html.escape(tpl.body_html)
+            with_breaks = escaped_body.replace("\n", "<br>\n")
+            body = with_breaks.replace(
+                "{nombre}", html.escape(mono.razon_social or "")
+            ).replace("{periodo}", html.escape(periodo_label or ""))
+            body = body + ADAIN_SIGNATURE_HTML
 
             ok, message = send_email(
                 to=mono.email,
@@ -2266,6 +2496,186 @@ def rpa_schedule_run_now():
     app = current_app._get_current_object()
     t = threading.Thread(
         target=_run_scheduled_rpa,
+        args=(app, schedule.id),
+        daemon=True,
+    )
+    t.start()
+    return jsonify({"ok": True, "message": "Proceso iniciado."})
+
+
+# --- Programacion Email Masivo Automatico ---
+
+
+_EMAIL_MASS_MODES = {"todos", "por_categoria", "manual"}
+
+
+@main_bp.post("/email-mass-schedule/save")
+@login_required
+@admin_required
+def email_mass_schedule_save():
+    data = request.get_json(silent=True) or {}
+    name = (data.get("name") or "").strip()
+    days_raw = data.get("days_of_month")
+    hour = data.get("hour")
+    minute = data.get("minute")
+    monos_mode = (data.get("monos_mode") or "manual").strip()
+    categoria_id = data.get("categoria_id")
+    mono_ids = data.get("monotributista_ids", [])
+    lookback_days = data.get("lookback_days")
+    send_report = bool(data.get("send_report", True))
+    report_email = (data.get("report_email") or "").strip()
+    schedule_id = data.get("id")
+
+    if not name:
+        return jsonify({"error": "El nombre es obligatorio."}), 400
+
+    # Normalizar lista de días: aceptar str CSV o lista
+    if isinstance(days_raw, str):
+        days_list = [d.strip() for d in days_raw.split(",") if d.strip()]
+    elif isinstance(days_raw, list):
+        days_list = [str(d).strip() for d in days_raw]
+    else:
+        days_list = []
+    try:
+        days_int = sorted({int(d) for d in days_list if str(d).isdigit()})
+    except (ValueError, TypeError):
+        return jsonify({"error": "Días del mes inválidos."}), 400
+    if not days_int or any(d < 1 or d > 31 for d in days_int):
+        return jsonify({"error": "Selecciona al menos un día (1-31)."}), 400
+
+    if hour is None or minute is None:
+        return jsonify({"error": "Completa la hora y los minutos."}), 400
+    try:
+        hour = int(hour)
+        minute = int(minute)
+    except (ValueError, TypeError):
+        return jsonify({"error": "Hora y minutos deben ser numeros."}), 400
+    if not (0 <= hour <= 23) or not (0 <= minute <= 59):
+        return jsonify({"error": "Hora (0-23) y minutos (0-59) invalidos."}), 400
+
+    if monos_mode not in _EMAIL_MASS_MODES:
+        return jsonify({"error": "Modo de selección inválido."}), 400
+
+    categoria_id_int: int | None = None
+    if monos_mode == "por_categoria":
+        if categoria_id in (None, "", 0, "0"):
+            return (
+                jsonify({"error": "Selecciona una categoría."}),
+                400,
+            )
+        try:
+            categoria_id_int = int(categoria_id)
+        except (ValueError, TypeError):
+            return jsonify({"error": "categoria_id inválido."}), 400
+        if not db.session.get(Categoria, categoria_id_int):
+            return jsonify({"error": "Categoría no encontrada."}), 404
+
+    mono_ids_int: list[int] = []
+    if monos_mode == "manual":
+        if not isinstance(mono_ids, list) or not mono_ids:
+            return (
+                jsonify({"error": "Selecciona al menos un monotributista."}),
+                400,
+            )
+        mono_ids_int = [int(mid) for mid in mono_ids if str(mid).isdigit()]
+        if not mono_ids_int:
+            return (
+                jsonify({"error": "Selecciona al menos un monotributista."}),
+                400,
+            )
+
+    if lookback_days is not None and lookback_days != "":
+        try:
+            lookback_days = int(lookback_days)
+            if lookback_days < 1 or lookback_days > 730:
+                return (
+                    jsonify({"error": "lookback_days debe estar entre 1 y 730."}),
+                    400,
+                )
+        except (ValueError, TypeError):
+            return jsonify({"error": "lookback_days debe ser un entero."}), 400
+    else:
+        lookback_days = 365
+
+    if schedule_id:
+        schedule = db.session.get(EmailMassSchedule, int(schedule_id))
+        if not schedule:
+            return jsonify({"error": "Programación no encontrada."}), 404
+    else:
+        schedule = EmailMassSchedule()
+        db.session.add(schedule)
+
+    schedule.name = name
+    schedule.set_days_of_month(days_int)
+    schedule.hour = hour
+    schedule.minute = minute
+    schedule.monos_mode = monos_mode
+    schedule.categoria_id = categoria_id_int
+    schedule.set_monotributista_ids(mono_ids_int)
+    schedule.lookback_days = lookback_days
+    schedule.send_report = send_report
+    schedule.report_email = report_email
+    db.session.commit()
+
+    return jsonify({"ok": True, "id": schedule.id})
+
+
+@main_bp.post("/email-mass-schedule/delete")
+@login_required
+@admin_required
+def email_mass_schedule_delete():
+    data = request.get_json(silent=True) or {}
+    schedule_id = data.get("id")
+    if not schedule_id:
+        return jsonify({"error": "Falta id."}), 400
+
+    schedule = db.session.get(EmailMassSchedule, int(schedule_id))
+    if not schedule:
+        return jsonify({"error": "Programación no encontrada."}), 404
+
+    db.session.delete(schedule)
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
+@main_bp.post("/email-mass-schedule/toggle")
+@login_required
+@admin_required
+def email_mass_schedule_toggle():
+    data = request.get_json(silent=True) or {}
+    schedule_id = data.get("id")
+    if not schedule_id:
+        return jsonify({"error": "Falta id."}), 400
+
+    schedule = db.session.get(EmailMassSchedule, int(schedule_id))
+    if not schedule:
+        return jsonify({"error": "Programación no encontrada."}), 404
+
+    schedule.is_active = not schedule.is_active
+    db.session.commit()
+    return jsonify({"ok": True, "is_active": schedule.is_active})
+
+
+@main_bp.post("/email-mass-schedule/run-now")
+@login_required
+@admin_required
+def email_mass_schedule_run_now():
+    data = request.get_json(silent=True) or {}
+    schedule_id = data.get("id")
+    if not schedule_id:
+        return jsonify({"error": "Falta id."}), 400
+
+    schedule = db.session.get(EmailMassSchedule, int(schedule_id))
+    if not schedule:
+        return jsonify({"error": "Programación no encontrada."}), 404
+
+    import threading
+    from website.scheduler import _run_scheduled_email_mass
+    from flask import current_app
+
+    app = current_app._get_current_object()
+    t = threading.Thread(
+        target=_run_scheduled_email_mass,
         args=(app, schedule.id),
         daemon=True,
     )
