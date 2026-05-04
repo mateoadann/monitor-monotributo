@@ -81,6 +81,9 @@
       <div class="panel__actions panel__actions--inline">
         <button class="primary" type="button" data-open="monotributista">Nuevo monotributista</button>
         <button class="ghost-button" type="button" data-open="monotributistas-import">Importar CSV</button>
+        {% if can_manage_config and has_smtp %}
+        <button class="ghost-button" type="button" data-open="envio-masivo">Enviar situacion por mail</button>
+        {% endif %}
       </div>
       {% endif %}
       <div class="pagination pagination--top" data-pagination="monotributistas-top">
@@ -90,27 +93,23 @@
       </div>
     </div>
     <div class="table">
-      <div class="table__row table__head table__row--mono">
+      <div class="table__row table__head table__row--monotributistas">
         <span>Razon Social</span>
         <span>CUIT</span>
-        <span>Clave Fiscal</span>
+        <span>Email</span>
         <span>Categoria</span>
         <span>Categoria corresponde</span>
         <span>Acciones</span>
       </div>
       {% for item in monotributistas %}
-      <div class="table__row table__row--mono" data-row="mono" data-razon="{{ item.razon_social | lower }}" data-cuit="{{ item.cuit }}" data-categoria="{{ item.categoria_actual }}" data-corresponde="{{ item.categoria_corresponde }}" data-estado="{{ item.estado_categoria }}" data-search="{{ (item.razon_social ~ ' ' ~ item.cuit ~ ' ' ~ item.categoria_actual ~ ' ' ~ item.categoria_corresponde) | lower }}">
+      <div class="table__row table__row--monotributistas" data-row="mono" data-razon="{{ item.razon_social | lower }}" data-cuit="{{ item.cuit }}" data-categoria="{{ item.categoria_actual }}" data-corresponde="{{ item.categoria_corresponde }}" data-estado="{{ item.estado_categoria }}" data-search="{{ (item.razon_social ~ ' ' ~ item.cuit ~ ' ' ~ item.categoria_actual ~ ' ' ~ item.categoria_corresponde) | lower }}">
         <span>{{ item.razon_social }}</span>
         <span>{{ item.cuit }}</span>
-        <span class="secret-cell">
-          <span class="secret" data-secret="{{ item.clave_fiscal }}">********</span>
-          <button class="icon-button" type="button" data-toggle="secret" aria-label="Mostrar clave fiscal" title="Mostrar clave fiscal">
-            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <path d="M12 5c-5 0-9 4.5-10 7 1 2.5 5 7 10 7s9-4.5 10-7c-1-2.5-5-7-10-7zm0 11a4 4 0 1 1 0-8 4 4 0 0 1 0 8z" fill="currentColor"/>
-              <circle cx="12" cy="12" r="2.5" fill="currentColor"/>
-            </svg>
-          </button>
-        </span>
+        {% if item.email %}
+        <span class="monos-email-cell" title="{{ item.email }}">{{ item.email }}</span>
+        {% else %}
+        <span class="monos-email-cell monos-email-cell--empty">Sin email</span>
+        {% endif %}
         <span>{{ item.categoria_actual }}</span>
         <span class="badge badge--{{ item.estado_categoria }}">{{ item.categoria_corresponde }}</span>
         {% if can_edit %}
@@ -245,11 +244,23 @@
       <div>
         <h2>Calculo de facturacion anual</h2>
         <p>Selecciona un monotributista para ver el detalle mensual.</p>
+        {% if last_rpa_date %}
+        <p class="panel__hint" style="margin-top: 4px;"><strong>Actualizado al:</strong> {{ last_rpa_date }}</p>
+        {% endif %}
       </div>
       <form class="selector selector--calculo" method="get">
         <input type="hidden" name="tab" value="calculo">
         <input type="hidden" name="anchor" value="{{ anchor_value }}">
         <input type="hidden" name="monotributista" value="{{ seleccionado_id or '' }}">
+        {% if detalle %}
+        <a class="pdf-icon-btn" href="/calculo/{{ seleccionado_id }}/pdf?anchor={{ anchor_value }}" target="_blank" title="Exportar PDF">
+          <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <text x="7" y="17" font-size="5.5" font-weight="bold" fill="currentColor" stroke="none" font-family="Arial, sans-serif">PDF</text>
+          </svg>
+        </a>
+        {% endif %}
         <div class="field field--inline field--calculo-select">
           <span>Facturador</span>
           <div class="filter-select" data-search-select="calculo" data-multiple="false" data-placeholder="Seleccionar facturador">
@@ -359,48 +370,409 @@
   <div class="tabs__panel {% if active_tab == 'configuracion' %}is-active{% endif %}" id="configuracion">
     <div class="panel__header">
       <h2>Configuracion</h2>
-      <span class="panel__hint">Define vigencias y topes por categoria.</span>
+      <span class="panel__hint">Define vigencias, topes por categoria, configuracion de email y programacion de actualizacion masiva.</span>
     </div>
-    <form class="panel__form" method="post" action="{{ url_for('main.create_vigencia') }}" data-confirm="Confirmar creacion de la vigencia?">
-      <div class="form-grid">
-        <label class="field">
-          Vigencia desde
-          <input type="date" name="vigencia_desde" required>
-        </label>
-        <label class="field">
-          Vigencia hasta
-          <input type="date" name="vigencia_hasta">
-        </label>
+
+    <details class="rpa-collapse config-collapse">
+      <summary>Configuración SMTP</summary>
+      <div class="rpa-collapse__body">
+        <p class="panel__hint" style="margin: 0;">Configurá el servidor de correo para enviar notificaciones y alertas por email.</p>
+        <form class="panel__form" id="smtpForm">
+          <div class="form-grid">
+            <label class="field">
+              Host
+              <input type="text" name="smtp_host" placeholder="smtp.gmail.com" value="{{ smtp_config.host if smtp_config }}" required>
+            </label>
+            <label class="field">
+              Puerto
+              <input type="number" name="smtp_port" value="{{ smtp_config.port if smtp_config else 587 }}" required>
+            </label>
+          </div>
+          <div class="form-grid">
+            <label class="field">
+              Usuario
+              <input type="text" name="smtp_username" value="{{ smtp_config.username if smtp_config }}" required>
+            </label>
+            <label class="field">
+              Contraseña
+              <input type="password" name="smtp_password" placeholder="{{ '********' if smtp_config }}" {{ '' if smtp_config else 'required' }}>
+            </label>
+          </div>
+          <div class="form-grid">
+            <label class="field">
+              Email remitente
+              <input type="email" name="smtp_from_email" value="{{ smtp_config.from_email if smtp_config }}" required>
+            </label>
+            <label class="field">
+              Nombre remitente
+              <input type="text" name="smtp_from_name" value="{{ smtp_config.from_name if smtp_config else 'Monitor Monotributo' }}">
+            </label>
+          </div>
+          <label class="checklist__item">
+            <input type="checkbox" name="smtp_use_tls" {{ 'checked' if not smtp_config or smtp_config.use_tls }}>
+            Usar TLS
+          </label>
+          <p class="panel__hint" style="margin: 4px 0 8px; font-size: 13px;">Para Gmail, usá una Contraseña de aplicación (requiere verificación en 2 pasos activada).</p>
+          <div style="display: flex; gap: 10px; align-items: center;">
+            <button class="primary" type="submit">Guardar</button>
+            <button class="outline" type="button" id="smtpTestBtn">Enviar prueba</button>
+            {% if smtp_config %}
+            <button class="outline" type="button" id="smtpDeleteBtn" style="border-color: #9b2c2c; color: #9b2c2c;">Eliminar</button>
+            {% endif %}
+          </div>
+        </form>
       </div>
-      <button class="primary" type="submit">Crear vigencia</button>
-    </form>
-    <div class="table">
-      <div class="table__row table__head table__row--config">
-        <span>Vigencia desde</span>
-        <span>Vigencia hasta</span>
-        <span>Acciones</span>
+    </details>
+
+    <details class="rpa-collapse config-collapse">
+      <summary>Plantilla de email para envio masivo</summary>
+      <div class="rpa-collapse__body">
+        <p class="panel__hint" style="margin: 0;">Escribi el mensaje como en un email normal. Usa los botones de abajo para insertar el nombre del cliente o el periodo. Los saltos de linea se respetan automaticamente.</p>
+        <form class="panel__form" id="emailTemplateForm">
+          <label class="field">
+            Asunto
+            <input type="text" name="email_tpl_subject" value="{{ email_template.subject }}" required>
+          </label>
+          <label class="field">
+            Cuerpo del email
+            <textarea name="email_tpl_body" rows="8" required>{{ email_template.body_html }}</textarea>
+          </label>
+          <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+            <span style="font-size: 12px; color: var(--navy-40);">Insertar variable:</span>
+            <button class="var-chip" type="button" data-var="{nombre}">Nombre del cliente</button>
+            <button class="var-chip" type="button" data-var="{periodo}">Periodo</button>
+            <button class="outline outline--sm" type="button" id="emailTplPreviewBtn" style="margin-left: auto;">Vista previa</button>
+          </div>
+          <div style="display: flex; gap: 10px; align-items: center;">
+            <button class="primary" type="submit">Guardar plantilla</button>
+          </div>
+        </form>
       </div>
-      {% for vigencia in vigencias_table %}
-      <div class="table__row table__row--config">
-        <span>{{ vigencia.vigencia_desde }}</span>
-        <span>{{ vigencia.vigencia_hasta }}</span>
-        <span class="row-actions">
-          <a class="icon-link" href="{{ url_for('main.edit_vigencia', vigencia_id=vigencia.id) }}" aria-label="Editar">
-            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <path d="M4 17.25V20h2.75l8.1-8.1-2.75-2.75-8.1 8.1zM20.7 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" fill="currentColor"/>
-            </svg>
-          </a>
-          <form method="post" action="{{ url_for('main.delete_vigencia', vigencia_id=vigencia.id) }}" data-confirm="Confirmar eliminacion de la vigencia?">
-            <button class="icon-link icon-link--danger" type="submit" aria-label="Eliminar" title="Eliminar">
-              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                <path d="M6 7h12l-1 13a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L6 7zm3-4h6l1 2H8l1-2z" fill="currentColor"/>
-              </svg>
-            </button>
-          </form>
-        </span>
+    </details>
+
+    <details class="rpa-collapse config-collapse">
+      <summary>Programar Actualizacion Masiva</summary>
+      <div class="rpa-collapse__body">
+        <p class="panel__hint" style="margin: 0;">Programa la descarga automatica de facturas via RPA para los monotributistas seleccionados. Al finalizar, se envia un reporte por email.</p>
+
+        <div style="display: flex; gap: 10px; align-items: center;">
+          <button class="primary" type="button" id="rpaScheduleNewBtn">Nueva actualizacion masiva</button>
+        </div>
+
+        <div id="rpaScheduleList">
+          {% for sched in rpa_schedules %}
+          <div class="rpa-schedule-card" data-schedule-id="{{ sched.id }}" style="border:1px solid #ddd; border-radius:8px; padding:14px 18px; margin-bottom:10px; background:{{ '#f8f8f8' if not sched.is_active else '#fff' }};">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+              <div>
+                <strong style="font-size:15px;">{{ sched.name }}</strong>
+                {% if not sched.is_active %}<span class="badge badge--sube" style="margin-left:8px;">Inactiva</span>{% else %}<span class="badge badge--mantiene" style="margin-left:8px;">Activa</span>{% endif %}
+              </div>
+              <div style="display:flex; gap:6px;">
+                <button class="outline outline--sm" type="button" data-sched-edit='{{ sched | tojson }}'>Editar</button>
+                <button class="outline outline--sm" type="button" data-sched-toggle="{{ sched.id }}">{{ 'Activar' if not sched.is_active else 'Pausar' }}</button>
+                <button class="outline outline--sm" type="button" data-sched-run="{{ sched.id }}">Ejecutar ahora</button>
+                <button class="outline outline--sm" type="button" data-sched-delete="{{ sched.id }}" style="border-color:#9b2c2c;color:#9b2c2c;">Eliminar</button>
+              </div>
+            </div>
+            <div style="margin-top:8px; font-size:13px; color:#555; display:flex; flex-wrap:wrap; gap:16px;">
+              <span>
+                {% set day_names = {'1':'Lun','2':'Mar','3':'Mie','4':'Jue','5':'Vie','6':'Sab','7':'Dom'} %}
+                {% for d in sched.day_of_week.split(',') %}{{ day_names.get(d.strip(), d.strip()) }}{% if not loop.last %}, {% endif %}{% endfor %}
+                a las {{ '%02d' | format(sched.hour) }}:{{ '%02d' | format(sched.minute) }}
+              </span>
+              <span>{{ sched.monotributista_ids | length }} monotributista{{ 's' if sched.monotributista_ids | length != 1 }}</span>
+              {% if sched.send_report %}<span>Reporte: {{ sched.report_email or 'email SMTP' }}</span>{% endif %}
+              {% if sched.last_run_at %}
+              <span>Ultima ejecucion: {{ sched.last_run_at }}
+                {% if sched.last_run_status == 'success' %}<span class="badge badge--mantiene">OK</span>{% elif sched.last_run_status == 'failed' %}<span class="badge badge--sube">Error</span>{% else %}<span class="badge badge--baja">{{ sched.last_run_status }}</span>{% endif %}
+              </span>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+          {% if not rpa_schedules %}
+          <p style="color:#888; font-size:14px;">No hay actualizaciones masivas programadas.</p>
+          {% endif %}
+        </div>
       </div>
-      {% endfor %}
+    </details>
+
+    <!-- Modal programacion RPA (overlay flotante, fuera de los <details> para que no se colapse) -->
+    <div class="modal" data-modal="rpa-schedule">
+      <div class="modal__content modal__content--lg">
+        <div class="modal__header">
+          <h3>Programar Actualizacion Masiva</h3>
+          <button class="modal__close" type="button" data-close aria-label="Cerrar">&times;</button>
+        </div>
+        <form id="rpaScheduleForm" class="panel__form panel__form--rpa">
+          <input type="hidden" name="sched_id" id="schedId">
+          <label class="field">
+            Nombre
+            <input type="text" name="sched_name" id="schedName" placeholder="Ej: Proceso semanal" required>
+          </label>
+
+          <div class="form-section">
+            <span class="form-section__title">Dias de la semana</span>
+            <div class="checklist checklist--grid">
+              <label class="checklist__item"><input type="checkbox" name="sched_dow" value="1"> Lun</label>
+              <label class="checklist__item"><input type="checkbox" name="sched_dow" value="2"> Mar</label>
+              <label class="checklist__item"><input type="checkbox" name="sched_dow" value="3"> Mie</label>
+              <label class="checklist__item"><input type="checkbox" name="sched_dow" value="4"> Jue</label>
+              <label class="checklist__item"><input type="checkbox" name="sched_dow" value="5"> Vie</label>
+              <label class="checklist__item"><input type="checkbox" name="sched_dow" value="6"> Sab</label>
+              <label class="checklist__item"><input type="checkbox" name="sched_dow" value="7"> Dom</label>
+            </div>
+          </div>
+
+          <div class="form-grid">
+            <label class="field">
+              Cantidad de dias anteriores
+              <input type="number" name="sched_lookback_days" id="schedLookbackDays" min="1" max="730" value="365">
+            </label>
+            <label class="field">
+              Hora de ejecucion
+              <input type="text" id="schedTime" placeholder="08:00" readonly>
+            </label>
+          </div>
+          <p class="form-hint">Cantidad de dias hacia atras desde la fecha de ejecucion. Ejemplo: 365 equivale a los ultimos 12 meses aproximadamente.</p>
+          <p class="form-hint" id="schedLookbackPreview"></p>
+
+          <details class="rpa-collapse" data-sched-section="monotributistas">
+            <summary>Monotributistas a procesar</summary>
+            <div class="rpa-collapse__body">
+              <div class="rpa-collapse__actions">
+                <input class="field__search" type="text" placeholder="Buscar razon social" data-sched-monos-search>
+                <button class="outline outline--sm" type="button" id="schedSelectAll">Todos</button>
+                <button class="outline outline--sm" type="button" id="schedSelectNone">Ninguno</button>
+              </div>
+              <div class="checklist checklist--scroll" data-sched-monos-list>
+                {% for item in monotributistas_select %}
+                <label class="checklist__item" data-search="{{ item.razon_social | lower }}">
+                  <input type="checkbox" name="sched_monos" value="{{ item.id }}">
+                  {{ item.razon_social }} ({{ item.cuit }})
+                </label>
+                {% endfor %}
+              </div>
+            </div>
+          </details>
+
+          <div class="form-section">
+            <span class="form-section__title">Reporte</span>
+            <label class="checklist__item">
+              <input type="checkbox" name="sched_send_report" id="schedSendReport" checked>
+              Enviar reporte por email al finalizar
+            </label>
+            <label class="field" id="schedReportEmailField">
+              Email para reporte (dejar vacio para usar el email SMTP)
+              <input type="email" name="sched_report_email" id="schedReportEmail" placeholder="ejemplo@mail.com">
+            </label>
+          </div>
+
+          <div class="modal__actions">
+            <button class="outline" type="button" data-close>Cancelar</button>
+            <button class="primary" type="submit">Guardar</button>
+          </div>
+        </form>
+      </div>
     </div>
+
+    <details class="rpa-collapse config-collapse">
+      <summary>Envio automatico y masivo de email</summary>
+      <div class="rpa-collapse__body">
+        <p class="panel__hint" style="margin: 0;">Programa el envio automatico de la situacion por email a los monotributistas. Se ejecuta el RPA antes de mandar cada email para asegurar datos actualizados. Los emails se envian con una pausa de 10 segundos entre cada uno para evitar spam.</p>
+
+        <div style="display: flex; gap: 10px; align-items: center;">
+          <button class="primary" type="button" id="emailMassScheduleNewBtn">Nuevo envio programado</button>
+        </div>
+
+        <div id="emailMassScheduleList">
+          {% for sched in email_mass_schedules %}
+          <div class="rpa-schedule-card" data-emailmass-id="{{ sched.id }}" data-emailmass-monos-count="{{ sched.monos_count }}" style="border:1px solid #ddd; border-radius:8px; padding:14px 18px; margin-bottom:10px; background:{{ '#f8f8f8' if not sched.is_active else '#fff' }};">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+              <div>
+                <strong style="font-size:15px;">{{ sched.name }}</strong>
+                {% if not sched.is_active %}<span class="badge badge--sube" style="margin-left:8px;">Pausado</span>{% else %}<span class="badge badge--mantiene" style="margin-left:8px;">Activo</span>{% endif %}
+              </div>
+              <div style="display:flex; gap:6px;">
+                <button class="outline outline--sm" type="button" data-emailmass-edit='{{ sched | tojson }}'>Editar</button>
+                <button class="outline outline--sm" type="button" data-emailmass-toggle="{{ sched.id }}">{{ 'Activar' if not sched.is_active else 'Pausar' }}</button>
+                <button class="outline outline--sm" type="button" data-emailmass-run="{{ sched.id }}">Ejecutar ahora</button>
+                <button class="outline outline--sm" type="button" data-emailmass-delete="{{ sched.id }}" style="border-color:#9b2c2c;color:#9b2c2c;">Eliminar</button>
+              </div>
+            </div>
+            <div style="margin-top:8px; font-size:13px; color:#555; display:flex; flex-wrap:wrap; gap:16px;">
+              <span>
+                {% for d in sched.days_of_month %}Dia {{ d }}{% if not loop.last %}, {% endif %}{% endfor %}
+                a las {{ '%02d' | format(sched.hour) }}:{{ '%02d' | format(sched.minute) }}
+              </span>
+              <span>
+                {% if sched.monos_mode == 'todos' %}Todos los monotributistas ({{ sched.monos_count }})
+                {% elif sched.monos_mode == 'por_categoria' %}Por categoria: {{ sched.categoria_nombre or '-' }} ({{ sched.monos_count }})
+                {% else %}Seleccion manual ({{ sched.monos_count }}){% endif %}
+              </span>
+              {% if sched.send_report %}<span>Reporte: {{ sched.report_email or 'email SMTP' }}</span>{% endif %}
+              {% if sched.last_run_at %}
+              <span>Ultima ejecucion: {{ sched.last_run_at }}
+                {% if sched.last_run_status == 'success' %}<span class="badge badge--mantiene">OK</span>{% elif sched.last_run_status == 'failed' %}<span class="badge badge--sube">Error</span>{% else %}<span class="badge badge--baja">{{ sched.last_run_status }}</span>{% endif %}
+              </span>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+          {% if not email_mass_schedules %}
+          <p style="color:#888; font-size:14px;">No hay envios automaticos programados.</p>
+          {% endif %}
+        </div>
+      </div>
+    </details>
+
+    <!-- Modal envio masivo automatico (overlay flotante, fuera de los <details>) -->
+    <div class="modal" data-modal="email-mass-schedule">
+      <div class="modal__content modal__content--lg">
+        <div class="modal__header">
+          <h3 id="emailMassScheduleModalTitle">Nuevo envio programado</h3>
+          <button class="modal__close" type="button" data-close aria-label="Cerrar">&times;</button>
+        </div>
+        <form id="emailMassScheduleForm" class="panel__form panel__form--rpa">
+          <input type="hidden" name="id" id="emailMassSchedId">
+          <label class="field">
+            Nombre
+            <input type="text" name="name" id="emailMassSchedName" placeholder="Ej: Envio mensual" required>
+          </label>
+
+          <div class="form-grid">
+            <label class="field">
+              Dias del mes (separados por coma — ej: 1,15)
+              <input type="text" name="days_of_month" id="emailMassSchedDays" placeholder="1,15" required>
+            </label>
+            <label class="field">
+              Hora de envio
+              <input type="text" id="emailMassSchedTime" placeholder="08:00" readonly>
+            </label>
+          </div>
+          <p class="form-hint">Los envios se ejecutaran cada uno de los dias indicados a la hora seleccionada.</p>
+
+          <div class="form-section">
+            <span class="form-section__title">Grupo de monotributistas</span>
+            <div class="choice-group">
+              <label class="choice">
+                <input type="radio" name="emailmass_monos_mode" value="todos">
+                Todos los monotributistas
+              </label>
+              <label class="choice">
+                <input type="radio" name="emailmass_monos_mode" value="por_categoria">
+                Por categoria
+              </label>
+              <label class="choice">
+                <input type="radio" name="emailmass_monos_mode" value="manual" checked>
+                Seleccion manual
+              </label>
+            </div>
+          </div>
+
+          <div id="emailMassCategoriaWrapper" hidden>
+            <label class="field">
+              Categoria
+              <select name="categoria_id" id="emailMassSchedCategoriaId">
+                <option value="">Selecciona una categoria</option>
+                {% for categoria in categorias %}
+                <option value="{{ categoria.id }}">{{ categoria.nombre }}</option>
+                {% endfor %}
+              </select>
+            </label>
+          </div>
+
+          <details class="rpa-collapse" data-emailmass-section="monotributistas" id="emailMassManualWrapper">
+            <summary>Monotributistas a procesar (<span id="emailMassMonosCount">0</span> seleccionados)</summary>
+            <div class="rpa-collapse__body">
+              <div class="rpa-collapse__actions">
+                <input class="field__search" type="text" placeholder="Buscar razon social" id="emailMassMonosSearch">
+                <button class="outline outline--sm" type="button" id="emailMassMonosSelectAll">Todos</button>
+                <button class="outline outline--sm" type="button" id="emailMassMonosSelectNone">Ninguno</button>
+              </div>
+              <div class="checklist checklist--scroll" id="emailMassMonosList">
+                {% for item in monotributistas_select %}
+                <label class="checklist__item" data-emailmass-mono="{{ item.id }}" data-emailmass-name="{{ item.razon_social | lower }}">
+                  <input type="checkbox" name="emailmass_monos" value="{{ item.id }}">
+                  {{ item.razon_social }} ({{ item.cuit }}){% if not item.email %} <span style="color:#9b2c2c; font-size:12px;">(sin email)</span>{% endif %}
+                </label>
+                {% endfor %}
+              </div>
+            </div>
+          </details>
+
+          <div class="form-grid">
+            <label class="field">
+              Cantidad de dias anteriores a procesar
+              <input type="number" name="lookback_days" id="emailMassSchedLookback" value="365" min="1" max="730" required>
+            </label>
+          </div>
+
+          <div class="form-section">
+            <span class="form-section__title">Reporte</span>
+            <label class="checklist__item">
+              <input type="checkbox" name="send_report" id="emailMassSchedSendReport" checked>
+              Enviar reporte al administrador al finalizar
+            </label>
+            <label class="field" id="emailMassReportEmailField">
+              Email para reporte (vacio = usa el remitente SMTP)
+              <input type="email" name="report_email" id="emailMassSchedReportEmail" placeholder="admin@empresa.com">
+            </label>
+          </div>
+
+          <div class="modal__actions">
+            <button class="outline" type="button" data-close>Cancelar</button>
+            <button class="primary" type="submit">Guardar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <details class="rpa-collapse config-collapse">
+      <summary>Vigencias</summary>
+      <div class="rpa-collapse__body">
+        <form class="panel__form" method="post" action="{{ url_for('main.create_vigencia') }}" data-confirm="Confirmar creacion de la vigencia?">
+          <div class="form-grid">
+            <label class="field">
+              Vigencia desde
+              <input type="date" name="vigencia_desde" required>
+            </label>
+            <label class="field">
+              Vigencia hasta
+              <input type="date" name="vigencia_hasta">
+            </label>
+          </div>
+          <button class="primary" type="submit">Crear vigencia</button>
+        </form>
+        <div class="table">
+          <div class="table__row table__head table__row--config">
+            <span>Vigencia desde</span>
+            <span>Vigencia hasta</span>
+            <span>Acciones</span>
+          </div>
+          {% for vigencia in vigencias_table %}
+          <div class="table__row table__row--config">
+            <span>{{ vigencia.vigencia_desde }}</span>
+            <span>{{ vigencia.vigencia_hasta }}</span>
+            <span class="row-actions">
+              <a class="icon-link" href="{{ url_for('main.edit_vigencia', vigencia_id=vigencia.id) }}" aria-label="Editar">
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M4 17.25V20h2.75l8.1-8.1-2.75-2.75-8.1 8.1zM20.7 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" fill="currentColor"/>
+                </svg>
+              </a>
+              <form method="post" action="{{ url_for('main.delete_vigencia', vigencia_id=vigencia.id) }}" data-confirm="Confirmar eliminacion de la vigencia?">
+                <button class="icon-link icon-link--danger" type="submit" aria-label="Eliminar" title="Eliminar">
+                  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M6 7h12l-1 13a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L6 7zm3-4h6l1 2H8l1-2z" fill="currentColor"/>
+                  </svg>
+                </button>
+              </form>
+            </span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </details>
   </div>
   {% endif %}
 
@@ -696,6 +1068,10 @@
             {% endfor %}
           </select>
         </label>
+        <label class="field">
+          Email
+          <input type="email" name="email" value="{{ mono_form.get('email', '') if mono_form else '' }}" placeholder="email@ejemplo.com">
+        </label>
       </div>
       <button class="primary" type="submit">Crear monotributista</button>
     </form>
@@ -732,9 +1108,91 @@
         <input type="checkbox" name="dry_run" value="1" checked>
         Simular importacion (no guarda cambios)
       </label>
-      <p class="form-hint">Columnas requeridas: razon_social, cuit, clave_fiscal, categoria_actual</p>
+      <label class="checklist__item">
+        <input type="checkbox" name="update_existing" value="1" id="importMonosUpdateExisting">
+        Actualizar registros existentes (matchea por CUIT)
+      </label>
+      <p class="panel__hint" style="margin-top: 4px; font-size: 12px;">
+        Cuando esta activado: si el CUIT ya existe, se actualizan los campos presentes en el CSV (razon social, email, clave fiscal, categoria). Las celdas vacias y columnas ausentes NO modifican los datos existentes.
+      </p>
+      <p class="form-hint">Columnas requeridas: razon_social, cuit, clave_fiscal, categoria_actual. Columnas opcionales: email.</p>
       <button class="primary" type="submit">Procesar importacion</button>
     </form>
+  </div>
+</div>
+
+{% if can_manage_config and has_smtp %}
+<div class="modal modal--wide" data-modal="envio-masivo">
+  <div class="modal__content">
+    <div class="modal__header">
+      <h3>Envio masivo de situacion por email</h3>
+      <button class="modal__close" type="button" data-close>&times;</button>
+    </div>
+    <div id="envioMasivoContent">
+      <p class="panel__hint" style="margin: 0 0 12px;">Selecciona los monotributistas a quienes enviar el informe PDF por email. Solo se muestran los que tienen email cargado.</p>
+      <div class="form-grid" style="margin-bottom: 12px;">
+        <label class="field">
+          Periodo de corte
+          <input type="hidden" id="envioMasivoAnchor" value="{{ mono_anchor_value }}">
+          <input type="text" data-month-picker data-hidden-input="#envioMasivoAnchor" data-anchor="{{ mono_anchor_value }}" autocomplete="off" readonly>
+        </label>
+      </div>
+      <div style="display: flex; gap: 10px; margin-bottom: 8px;">
+        <button class="ghost-button" type="button" id="envioMasivoSelectAll">Seleccionar todos</button>
+        <button class="ghost-button" type="button" id="envioMasivoDeselectAll">Deseleccionar todos</button>
+      </div>
+      <div style="margin-bottom: 8px;">
+        <input type="text" id="envioMasivoSearch" class="field__search" placeholder="Buscar por razon social, CUIT o email..." style="width: 100%;" autocomplete="off">
+      </div>
+      <div class="table">
+        <div class="table__row table__head table__row--envio-masivo">
+          <span></span>
+          <span>Razon Social</span>
+          <span>CUIT</span>
+          <span>Email</span>
+        </div>
+        {% for item in monotributistas %}
+        {% if item.email %}
+        <div class="table__row is-clickable table__row--envio-masivo"
+             data-envio-mono-id="{{ item.id }}"
+             data-envio-search="{{ ((item.razon_social or '') ~ ' ' ~ (item.cuit or '') ~ ' ' ~ (item.email or ''))|lower }}">
+          <span><input type="checkbox" class="envio-masivo-check" value="{{ item.id }}" checked></span>
+          <span>{{ item.razon_social }}</span>
+          <span>{{ item.cuit }}</span>
+          <span class="monos-email-cell" title="{{ item.email }}">{{ item.email }}</span>
+        </div>
+        {% endif %}
+        {% endfor %}
+      </div>
+      <div id="envioMasivoEmpty" style="display: none; padding: 16px; text-align: center; color: #666;">
+        No hay monotributistas con email cargado. Edita sus datos para agregar un email.
+      </div>
+      <div style="display: flex; gap: 10px; align-items: center; margin-top: 16px;">
+        <button class="primary" type="button" id="envioMasivoBtn">Enviar emails</button>
+        <span id="envioMasivoStatus" style="font-size: 14px;"></span>
+      </div>
+      <div id="envioMasivoResult" style="display: none; margin-top: 12px; padding: 12px; border-radius: 6px; font-size: 14px;"></div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div class="modal" data-modal="email-template-preview">
+  <div class="modal__content">
+    <div class="modal__header">
+      <h3>Vista previa del email</h3>
+      <button class="modal__close" type="button" data-close>&times;</button>
+    </div>
+    <p class="panel__hint" style="margin: 0 0 12px;">Datos de ejemplo: cliente Juan Perez, periodo Enero 2026.</p>
+    <div style="border: 1px solid #d8dce6; border-radius: 12px; padding: 16px; background: var(--white);">
+      <div style="font-size: 13px; color: var(--navy-40); margin-bottom: 4px;">Asunto:</div>
+      <div id="emailTplPreviewSubject" style="font-weight: 600; color: var(--navy-90); margin-bottom: 12px;"></div>
+      <hr style="border: none; border-top: 1px solid #e6e8ef; margin: 0 0 12px;">
+      <div id="emailTplPreviewBody" style="color: var(--navy-90); font-size: 14px; line-height: 1.5;"></div>
+    </div>
+    <div class="modal__actions" style="margin-top: 16px;">
+      <button class="outline" type="button" data-close>Cerrar</button>
+    </div>
   </div>
 </div>
 
@@ -1151,30 +1609,23 @@
       panels.forEach((panel) => panel.classList.remove("is-active"));
       tab.classList.add("is-active");
       document.getElementById(target).classList.add("is-active");
+      window.history.replaceState(null, "", `#${target}`);
     });
   });
 
-  const secretButtons = document.querySelectorAll("[data-toggle='secret']");
-  secretButtons.forEach((button) => {
-    button.addEventListener("click", () => {
-      const cell = button.closest(".secret-cell");
-      const secret = cell.querySelector(".secret");
-      const showing = secret.dataset.showing === "true";
-      if (showing) {
-        secret.textContent = "********";
-        secret.dataset.showing = "false";
-        secret.setAttribute("title", "");
-        button.setAttribute("aria-label", "Mostrar clave fiscal");
-        button.setAttribute("title", "Mostrar clave fiscal");
-      } else {
-        secret.textContent = secret.dataset.secret;
-        secret.dataset.showing = "true";
-        secret.setAttribute("title", secret.dataset.secret);
-        button.setAttribute("aria-label", "Ocultar clave fiscal");
-        button.setAttribute("title", "Ocultar clave fiscal");
-      }
-    });
-  });
+  const activateTabFromHash = () => {
+    const hash = (window.location.hash || "").replace(/^#/, "");
+    if (!hash) return;
+    const targetPanel = document.getElementById(hash);
+    const targetTab = document.querySelector(`.tab[data-tab="${hash}"]`);
+    if (!targetPanel || !targetTab) return;
+    tabs.forEach((btn) => btn.classList.remove("is-active"));
+    panels.forEach((panel) => panel.classList.remove("is-active"));
+    targetTab.classList.add("is-active");
+    targetPanel.classList.add("is-active");
+  };
+  activateTabFromHash();
+  window.addEventListener("hashchange", activateTabFromHash);
 
   let updatePdfList = null;
   const pdfInput = document.querySelector("[data-modal='factura'] input[name='pdf_file']");
@@ -1889,34 +2340,34 @@
     document.body.classList.toggle("modal-open", Boolean(hasOpen));
   };
 
+  const airDatepickerLocaleEs = {
+    days: ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"],
+    daysShort: ["Dom", "Lun", "Mar", "Mie", "Jue", "Vie", "Sab"],
+    daysMin: ["Do", "Lu", "Ma", "Mi", "Ju", "Vi", "Sa"],
+    months: [
+      "Enero",
+      "Febrero",
+      "Marzo",
+      "Abril",
+      "Mayo",
+      "Junio",
+      "Julio",
+      "Agosto",
+      "Septiembre",
+      "Octubre",
+      "Noviembre",
+      "Diciembre",
+    ],
+    monthsShort: ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"],
+    today: "Hoy",
+    clear: "Limpiar",
+    dateFormat: "dd/MM/yyyy",
+    timeFormat: "HH:mm",
+    firstDay: 1,
+  };
+
   const monthPickerInputs = document.querySelectorAll("[data-month-picker]");
   if (monthPickerInputs.length) {
-    const airDatepickerLocaleEs = {
-      days: ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"],
-      daysShort: ["Dom", "Lun", "Mar", "Mie", "Jue", "Vie", "Sab"],
-      daysMin: ["Do", "Lu", "Ma", "Mi", "Ju", "Vi", "Sa"],
-      months: [
-        "Enero",
-        "Febrero",
-        "Marzo",
-        "Abril",
-        "Mayo",
-        "Junio",
-        "Julio",
-        "Agosto",
-        "Septiembre",
-        "Octubre",
-        "Noviembre",
-        "Diciembre",
-      ],
-      monthsShort: ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"],
-      today: "Hoy",
-      clear: "Limpiar",
-      dateFormat: "dd/MM/yyyy",
-      timeFormat: "hh:mm aa",
-      firstDay: 1,
-    };
-
     const parseAnchorValue = (value) => {
       if (!value) {
         return null;
@@ -2514,7 +2965,7 @@
   }
 
   const rpaForm = document.querySelector("[data-rpa-form]");
-  const showFlash = (message, type) => {
+  const showFlash = (message, type, persistent = false) => {
     if (!message) {
       return;
     }
@@ -2529,6 +2980,21 @@
     }
     const flash = document.createElement("div");
     flash.className = `flash flash--${type || "success"}`;
+    if (persistent) {
+      flash.dataset.flashPersistent = "true";
+      const text = document.createElement("span");
+      text.textContent = message;
+      const closeBtn = document.createElement("button");
+      closeBtn.type = "button";
+      closeBtn.className = "flash__close";
+      closeBtn.setAttribute("data-flash-close", "");
+      closeBtn.setAttribute("aria-label", "Cerrar");
+      closeBtn.innerHTML = "&times;";
+      flash.appendChild(text);
+      flash.appendChild(closeBtn);
+      flashStack.appendChild(flash);
+      return;
+    }
     flash.textContent = message;
     flashStack.appendChild(flash);
     const timeout = type === "error" ? 4000 : 2000;
@@ -2665,6 +3131,963 @@
         if (submitButton) {
           submitButton.disabled = false;
         }
+      }
+    });
+  }
+
+  const smtpForm = document.getElementById("smtpForm");
+  if (smtpForm) {
+    smtpForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const data = {
+        host: smtpForm.querySelector("[name='smtp_host']").value,
+        port: parseInt(smtpForm.querySelector("[name='smtp_port']").value, 10),
+        username: smtpForm.querySelector("[name='smtp_username']").value,
+        password: smtpForm.querySelector("[name='smtp_password']").value,
+        from_email: smtpForm.querySelector("[name='smtp_from_email']").value,
+        from_name: smtpForm.querySelector("[name='smtp_from_name']").value,
+        use_tls: smtpForm.querySelector("[name='smtp_use_tls']").checked,
+      };
+      try {
+        const response = await fetch("/smtp/save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        });
+        const result = await response.json();
+        if (!response.ok) {
+          showFlash(result.error || "No se pudo guardar la configuración SMTP.", "error");
+          return;
+        }
+        showFlash("Configuración SMTP guardada.", "success");
+        setTimeout(() => location.reload(), 600);
+      } catch (error) {
+        showFlash("Error de red al guardar configuración SMTP.", "error");
+      }
+    });
+
+    const smtpTestBtn = document.getElementById("smtpTestBtn");
+    if (smtpTestBtn) {
+      smtpTestBtn.addEventListener("click", async () => {
+        const testTo = await openPrompt("Ingresá el email donde enviar la prueba:", {
+          title: "Enviar email de prueba",
+          inputType: "email",
+          placeholder: "destinatario@ejemplo.com",
+        });
+        if (!testTo || !testTo.trim()) {
+          return;
+        }
+        const originalText = smtpTestBtn.textContent;
+        smtpTestBtn.textContent = "Enviando...";
+        smtpTestBtn.disabled = true;
+        try {
+          const response = await fetch("/smtp/test", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ test_to: testTo.trim() }),
+          });
+          const result = await response.json();
+          if (!response.ok) {
+            showFlash(result.error || "No se pudo enviar el email de prueba.", "error");
+          } else {
+            showFlash(result.message || "Email de prueba enviado.", "success");
+          }
+        } catch (error) {
+          showFlash("Error de red al enviar email de prueba.", "error");
+        } finally {
+          smtpTestBtn.textContent = originalText;
+          smtpTestBtn.disabled = false;
+        }
+      });
+    }
+
+    const smtpDeleteBtn = document.getElementById("smtpDeleteBtn");
+    if (smtpDeleteBtn) {
+      smtpDeleteBtn.addEventListener("click", () => {
+        openConfirm("¿Estás seguro de eliminar la configuración SMTP?", async () => {
+          try {
+            const response = await fetch("/smtp/delete", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+            });
+            const result = await response.json();
+            if (!response.ok) {
+              showFlash(result.error || "No se pudo eliminar la configuración SMTP.", "error");
+              return;
+            }
+            showFlash("Configuración SMTP eliminada.", "success");
+            setTimeout(() => location.reload(), 600);
+          } catch (error) {
+            showFlash("Error de red al eliminar configuración SMTP.", "error");
+          }
+        });
+      });
+    }
+  }
+
+  /* --- Email Template Form --- */
+  const emailTplForm = document.getElementById("emailTemplateForm");
+  if (emailTplForm) {
+    const bodyTextarea = emailTplForm.querySelector("[name='email_tpl_body']");
+    const subjectInput = emailTplForm.querySelector("[name='email_tpl_subject']");
+
+    emailTplForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const data = {
+        subject: subjectInput.value,
+        body_html: bodyTextarea.value,
+      };
+      try {
+        const response = await fetch("/email-template/save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        });
+        const result = await response.json();
+        if (!response.ok) {
+          showFlash(result.error || "No se pudo guardar la plantilla.", "error");
+          return;
+        }
+        showFlash("Plantilla de email guardada.", "success");
+      } catch (error) {
+        showFlash("Error de red al guardar plantilla de email.", "error");
+      }
+    });
+
+    /* Insertar variable en la posicion del cursor del ultimo campo enfocado
+       (asunto o cuerpo). Default: cuerpo. */
+    let lastFocusedTplField = bodyTextarea;
+    [subjectInput, bodyTextarea].forEach((field) => {
+      if (!field) return;
+      field.addEventListener("focus", (e) => {
+        lastFocusedTplField = e.currentTarget;
+      });
+    });
+
+    emailTplForm.querySelectorAll(".var-chip").forEach((chip) => {
+      chip.addEventListener("click", () => {
+        const field = lastFocusedTplField || bodyTextarea;
+        if (!field) return;
+        const value = chip.dataset.var || "";
+        if (
+          typeof field.selectionStart === "number" &&
+          typeof field.selectionEnd === "number"
+        ) {
+          const start = field.selectionStart;
+          const end = field.selectionEnd;
+          const before = field.value.slice(0, start);
+          const after = field.value.slice(end);
+          field.value = before + value + after;
+          const newPos = start + value.length;
+          field.focus();
+          field.setSelectionRange(newPos, newPos);
+        } else {
+          field.value += value;
+          field.focus();
+        }
+      });
+    });
+
+    /* Vista previa del email
+       NOTA seguridad: el backend escapa con html.escape() antes de
+       convertir \n -> <br>, asi que body_html_rendered es seguro
+       para asignar via innerHTML. */
+    const previewBtn = document.getElementById("emailTplPreviewBtn");
+    if (previewBtn) {
+      previewBtn.addEventListener("click", async () => {
+        try {
+          const response = await fetch("/email-template/preview", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              subject: subjectInput.value,
+              body: bodyTextarea.value,
+            }),
+          });
+          const result = await response.json();
+          if (!response.ok) {
+            showFlash(result.error || "No se pudo generar la vista previa.", "error");
+            return;
+          }
+          const subjectEl = document.getElementById("emailTplPreviewSubject");
+          const bodyEl = document.getElementById("emailTplPreviewBody");
+          if (subjectEl) subjectEl.textContent = result.subject_rendered || "";
+          if (bodyEl) bodyEl.innerHTML = result.body_html_rendered || "";
+          openModal("email-template-preview");
+        } catch (error) {
+          showFlash("Error de red al generar vista previa.", "error");
+        }
+      });
+    }
+  }
+
+  /* --- Envio Masivo --- */
+  const envioMasivoBtn = document.getElementById("envioMasivoBtn");
+  if (envioMasivoBtn) {
+    const checkboxes = document.querySelectorAll(".envio-masivo-check");
+    const emptyMsg = document.getElementById("envioMasivoEmpty");
+    if (checkboxes.length === 0 && emptyMsg) {
+      emptyMsg.style.display = "block";
+      envioMasivoBtn.disabled = true;
+    }
+
+    const envioMasivoModal = document.querySelector('[data-modal="envio-masivo"]');
+    const envioMasivoSearch = document.getElementById("envioMasivoSearch");
+
+    const isRowVisible = (row) => row.style.display !== "none";
+
+    const selectAllBtn = document.getElementById("envioMasivoSelectAll");
+    const deselectAllBtn = document.getElementById("envioMasivoDeselectAll");
+    if (selectAllBtn && envioMasivoModal) {
+      selectAllBtn.addEventListener("click", () => {
+        envioMasivoModal.querySelectorAll(".table__row.is-clickable").forEach((row) => {
+          if (!isRowVisible(row)) return;
+          const cb = row.querySelector(".envio-masivo-check");
+          if (cb) cb.checked = true;
+        });
+      });
+    }
+    if (deselectAllBtn && envioMasivoModal) {
+      deselectAllBtn.addEventListener("click", () => {
+        envioMasivoModal.querySelectorAll(".table__row.is-clickable").forEach((row) => {
+          if (!isRowVisible(row)) return;
+          const cb = row.querySelector(".envio-masivo-check");
+          if (cb) cb.checked = false;
+        });
+      });
+    }
+
+    if (envioMasivoModal) {
+      envioMasivoModal.addEventListener("click", (event) => {
+        const row = event.target.closest(".table__row.is-clickable");
+        if (!row || !envioMasivoModal.contains(row)) return;
+        if (event.target instanceof HTMLInputElement && event.target.type === "checkbox") return;
+        const cb = row.querySelector(".envio-masivo-check");
+        if (cb) cb.checked = !cb.checked;
+      });
+    }
+
+    if (envioMasivoSearch && envioMasivoModal) {
+      envioMasivoSearch.addEventListener("input", () => {
+        const term = envioMasivoSearch.value.trim().toLowerCase();
+        envioMasivoModal.querySelectorAll(".table__row.is-clickable").forEach((row) => {
+          const haystack = (row.dataset.envioSearch || "").toLowerCase();
+          const matches = !term || haystack.includes(term);
+          row.style.display = matches ? "" : "none";
+        });
+      });
+
+      envioMasivoModal.addEventListener("modal:open", () => {
+        envioMasivoSearch.value = "";
+        envioMasivoModal.querySelectorAll(".table__row.is-clickable").forEach((row) => {
+          row.style.display = "";
+        });
+      });
+    }
+
+    envioMasivoBtn.addEventListener("click", () => {
+      const selected = Array.from(checkboxes).filter(cb => cb.checked).map(cb => parseInt(cb.value));
+      if (selected.length === 0) {
+        showFlash("Selecciona al menos un monotributista.", "error");
+        return;
+      }
+      const anchor = document.getElementById("envioMasivoAnchor").value;
+      openConfirm("Enviar el informe por email a " + selected.length + " monotributista(s)?", async () => {
+        const statusEl = document.getElementById("envioMasivoStatus");
+        const resultEl = document.getElementById("envioMasivoResult");
+        envioMasivoBtn.disabled = true;
+        envioMasivoBtn.textContent = "Enviando...";
+        statusEl.textContent = "Procesando " + selected.length + " envio(s)...";
+        resultEl.style.display = "none";
+
+        try {
+          const response = await fetch("/envio-masivo", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ monotributista_ids: selected, anchor }),
+          });
+          const result = await response.json();
+          if (!response.ok) {
+            showFlash(result.error || "Error al procesar el envio masivo.", "error");
+            statusEl.textContent = "";
+          } else {
+            statusEl.textContent = "";
+            let msg = "Enviados: " + result.sent;
+            if (result.skipped > 0) msg += " | Sin email: " + result.skipped;
+            if (result.failed > 0) msg += " | Fallidos: " + result.failed;
+
+            resultEl.style.display = "block";
+            resultEl.textContent = "";
+            if (result.failed > 0) {
+              resultEl.style.background = "#fff3cd";
+              resultEl.style.border = "1px solid #ffc107";
+              const strong = document.createElement("strong");
+              strong.textContent = msg;
+              resultEl.appendChild(strong);
+              result.errors.forEach(function(e) {
+                const line = document.createElement("div");
+                line.textContent = "- " + (e.razon_social || e.id) + ": " + e.error;
+                line.style.fontSize = "13px";
+                resultEl.appendChild(line);
+              });
+            } else {
+              resultEl.style.background = "#d4edda";
+              resultEl.style.border = "1px solid #28a745";
+              const strong = document.createElement("strong");
+              strong.textContent = msg;
+              resultEl.appendChild(strong);
+            }
+          }
+        } catch (error) {
+          showFlash("Error de red al enviar emails.", "error");
+          statusEl.textContent = "";
+        } finally {
+          envioMasivoBtn.disabled = false;
+          envioMasivoBtn.textContent = "Enviar emails";
+        }
+      });
+    });
+  }
+
+  // --- Programacion RPA ---
+  const schedModal = document.querySelector("[data-modal='rpa-schedule']");
+  const schedForm = document.getElementById("rpaScheduleForm");
+  const schedNewBtn = document.getElementById("rpaScheduleNewBtn");
+  const schedSelectAll = document.getElementById("schedSelectAll");
+  const schedSelectNone = document.getElementById("schedSelectNone");
+  const schedSendReport = document.getElementById("schedSendReport");
+  const schedReportEmailField = document.getElementById("schedReportEmailField");
+  const schedLookbackDays = document.getElementById("schedLookbackDays");
+  const schedLookbackPreview = document.getElementById("schedLookbackPreview");
+
+  // --- Timepicker with AirDatepicker ---
+  let schedTimePicker = null;
+  const schedTimeInput = document.getElementById("schedTime");
+  if (schedTimeInput && window.AirDatepicker) {
+    schedTimePicker = new AirDatepicker(schedTimeInput, {
+      onlyTimepicker: true,
+      timepicker: true,
+      locale: airDatepickerLocaleEs,
+      timeFormat: "HH:mm",
+      selectedDates: [new Date(2000, 0, 1, 8, 0)],
+      onSelect: ({ date }) => {
+        const d = Array.isArray(date) ? date[0] : date;
+        if (d) {
+          const hh = String(d.getHours()).padStart(2, "0");
+          const mm = String(d.getMinutes()).padStart(2, "0");
+          schedTimeInput.value = hh + ":" + mm;
+        }
+      },
+    });
+    schedTimeInput.value = "08:00";
+  }
+
+  function getSchedTime() {
+    const val = (schedTimeInput ? schedTimeInput.value : "08:00") || "08:00";
+    const parts = val.split(":");
+    return { hour: parseInt(parts[0], 10) || 8, minute: parseInt(parts[1], 10) || 0 };
+  }
+
+  function setSchedTime(hour, minute) {
+    const hh = String(hour).padStart(2, "0");
+    const mm = String(minute).padStart(2, "0");
+    if (schedTimeInput) schedTimeInput.value = hh + ":" + mm;
+    if (schedTimePicker) {
+      schedTimePicker.selectDate(new Date(2000, 0, 1, hour, minute));
+    }
+  }
+
+  // --- Lookback days preview ---
+  function updateLookbackPreview() {
+    if (!schedLookbackPreview || !schedLookbackDays) return;
+    const days = parseInt(schedLookbackDays.value, 10);
+    if (!days || days < 1 || days > 730) {
+      schedLookbackPreview.textContent = "";
+      return;
+    }
+    const today = new Date();
+    const desde = new Date(today);
+    desde.setDate(desde.getDate() - days);
+    const fmt = (d) => String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0") + "/" + d.getFullYear();
+    schedLookbackPreview.textContent = "Si se ejecutara hoy: " + fmt(desde) + " → " + fmt(today);
+  }
+  if (schedLookbackDays) {
+    schedLookbackDays.addEventListener("input", updateLookbackPreview);
+    updateLookbackPreview();
+  }
+
+  // --- Monotributista search filter ---
+  const schedMonoSearch = document.querySelector("[data-sched-monos-search]");
+  const schedMonoList = document.querySelector("[data-sched-monos-list]");
+  if (schedMonoSearch && schedMonoList) {
+    schedMonoSearch.addEventListener("input", () => {
+      const query = schedMonoSearch.value.toLowerCase().trim();
+      schedMonoList.querySelectorAll(".checklist__item").forEach(item => {
+        const searchVal = item.getAttribute("data-search") || "";
+        if (!query || searchVal.includes(query)) {
+          item.removeAttribute("hidden");
+        } else {
+          item.setAttribute("hidden", "");
+        }
+      });
+    });
+  }
+
+  function openSchedModal() {
+    if (schedModal) {
+      schedModal.classList.add("is-open");
+      updateBodyScroll();
+    }
+  }
+
+  function resetSchedForm() {
+    if (!schedForm) return;
+    schedForm.reset();
+    document.getElementById("schedId").value = "";
+    schedForm.querySelectorAll("input[name='sched_dow']").forEach(cb => cb.checked = false);
+    schedForm.querySelectorAll("input[name='sched_monos']").forEach(cb => {
+      cb.checked = false;
+      cb.closest(".checklist__item").removeAttribute("hidden");
+    });
+    setSchedTime(8, 0);
+    if (schedLookbackDays) schedLookbackDays.value = "365";
+    updateLookbackPreview();
+    document.getElementById("schedSendReport").checked = true;
+    if (schedReportEmailField) schedReportEmailField.style.display = "";
+    if (schedMonoSearch) schedMonoSearch.value = "";
+  }
+
+  function fillSchedForm(sched) {
+    document.getElementById("schedId").value = sched.id || "";
+    document.getElementById("schedName").value = sched.name || "";
+    setSchedTime(sched.hour ?? 8, sched.minute ?? 0);
+    if (schedLookbackDays) schedLookbackDays.value = sched.lookback_days ?? 365;
+    updateLookbackPreview();
+    document.getElementById("schedSendReport").checked = sched.send_report !== false;
+    document.getElementById("schedReportEmail").value = sched.report_email || "";
+    if (schedReportEmailField) {
+      schedReportEmailField.style.display = sched.send_report !== false ? "" : "none";
+    }
+
+    const days = (sched.day_of_week || "").split(",").map(d => d.trim());
+    schedForm.querySelectorAll("input[name='sched_dow']").forEach(cb => {
+      cb.checked = days.includes(cb.value);
+    });
+
+    const monoIds = (sched.monotributista_ids || []).map(String);
+    schedForm.querySelectorAll("input[name='sched_monos']").forEach(cb => {
+      cb.checked = monoIds.includes(cb.value);
+    });
+    if (schedMonoSearch) schedMonoSearch.value = "";
+  }
+
+  if (schedNewBtn) {
+    schedNewBtn.addEventListener("click", () => {
+      resetSchedForm();
+      openSchedModal();
+    });
+  }
+
+  if (schedSelectAll) {
+    schedSelectAll.addEventListener("click", () => {
+      schedForm.querySelectorAll("input[name='sched_monos']").forEach(cb => {
+        if (!cb.closest(".checklist__item").hasAttribute("hidden")) cb.checked = true;
+      });
+    });
+  }
+  if (schedSelectNone) {
+    schedSelectNone.addEventListener("click", () => {
+      schedForm.querySelectorAll("input[name='sched_monos']").forEach(cb => cb.checked = false);
+    });
+  }
+  if (schedSendReport) {
+    schedSendReport.addEventListener("change", () => {
+      if (schedReportEmailField) {
+        schedReportEmailField.style.display = schedSendReport.checked ? "" : "none";
+      }
+    });
+  }
+
+  // Edit buttons
+  document.querySelectorAll("[data-sched-edit]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      try {
+        const sched = JSON.parse(btn.dataset.schedEdit);
+        resetSchedForm();
+        fillSchedForm(sched);
+        openSchedModal();
+      } catch (e) {
+        console.error("Error parsing schedule data", e);
+      }
+    });
+  });
+
+  // Toggle active/inactive
+  document.querySelectorAll("[data-sched-toggle]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.schedToggle;
+      try {
+        const resp = await fetch("/rpa-schedule/toggle", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+          showFlash(data.error || "Error al cambiar estado.", "error");
+          return;
+        }
+        showFlash(data.is_active ? "Actualizacion masiva activada." : "Actualizacion masiva pausada.", "success");
+        setTimeout(() => location.reload(), 600);
+      } catch (e) {
+        showFlash("Error de red.", "error");
+      }
+    });
+  });
+
+  // Run now
+  document.querySelectorAll("[data-sched-run]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const id = btn.dataset.schedRun;
+      openConfirm("Ejecutar esta actualizacion masiva ahora?", async () => {
+        try {
+          const resp = await fetch("/rpa-schedule/run-now", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id }),
+          });
+          const data = await resp.json();
+          if (!resp.ok) {
+            showFlash(data.error || "Error al ejecutar.", "error");
+            return;
+          }
+          showFlash(data.message || "Proceso iniciado.", "success");
+          setTimeout(() => location.reload(), 600);
+        } catch (e) {
+          showFlash("Error de red.", "error");
+        }
+      });
+    });
+  });
+
+  // Delete
+  document.querySelectorAll("[data-sched-delete]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const id = btn.dataset.schedDelete;
+      openConfirm("Eliminar esta actualizacion masiva?", async () => {
+        try {
+          const resp = await fetch("/rpa-schedule/delete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id }),
+          });
+          const data = await resp.json();
+          if (!resp.ok) {
+            showFlash(data.error || "Error al eliminar.", "error");
+            return;
+          }
+          showFlash("Actualizacion masiva eliminada.", "success");
+          setTimeout(() => location.reload(), 600);
+        } catch (e) {
+          showFlash("Error de red.", "error");
+        }
+      });
+    });
+  });
+
+  // Save form
+  if (schedForm) {
+    schedForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const id = document.getElementById("schedId").value;
+      const name = document.getElementById("schedName").value.trim();
+      const time = getSchedTime();
+      const sendReport = document.getElementById("schedSendReport").checked;
+      const reportEmail = document.getElementById("schedReportEmail").value.trim();
+      const lookbackDays = parseInt((document.getElementById("schedLookbackDays") || {}).value, 10) || 365;
+
+      const days = Array.from(schedForm.querySelectorAll("input[name='sched_dow']:checked")).map(cb => cb.value);
+      const monoIds = Array.from(schedForm.querySelectorAll("input[name='sched_monos']:checked")).map(cb => parseInt(cb.value, 10));
+
+      const payload = {
+        name,
+        day_of_week: days.join(","),
+        hour: time.hour,
+        minute: time.minute,
+        monotributista_ids: monoIds,
+        lookback_days: lookbackDays,
+        send_report: sendReport,
+        report_email: reportEmail,
+      };
+      if (id) payload.id = parseInt(id, 10);
+
+      try {
+        const resp = await fetch("/rpa-schedule/save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+          showFlash(data.error || "Error al guardar.", "error");
+          return;
+        }
+        showFlash("Actualizacion masiva guardada.", "success");
+        if (schedModal) {
+          closeModal(schedModal);
+        }
+        setTimeout(() => location.reload(), 600);
+      } catch (e) {
+        showFlash("Error de red.", "error");
+      }
+    });
+  }
+
+  // --- Envio Automatico y Masivo de email ---
+  const emailMassModal = document.querySelector("[data-modal='email-mass-schedule']");
+  const emailMassForm = document.getElementById("emailMassScheduleForm");
+  const emailMassNewBtn = document.getElementById("emailMassScheduleNewBtn");
+  const emailMassTitle = document.getElementById("emailMassScheduleModalTitle");
+  const emailMassDaysInput = document.getElementById("emailMassSchedDays");
+  const emailMassTimeInput = document.getElementById("emailMassSchedTime");
+  const emailMassLookback = document.getElementById("emailMassSchedLookback");
+  const emailMassSendReport = document.getElementById("emailMassSchedSendReport");
+  const emailMassReportEmailField = document.getElementById("emailMassReportEmailField");
+  const emailMassReportEmail = document.getElementById("emailMassSchedReportEmail");
+  const emailMassCategoriaWrapper = document.getElementById("emailMassCategoriaWrapper");
+  const emailMassManualWrapper = document.getElementById("emailMassManualWrapper");
+  const emailMassCategoriaSelect = document.getElementById("emailMassSchedCategoriaId");
+  const emailMassMonosList = document.getElementById("emailMassMonosList");
+  const emailMassMonosSearch = document.getElementById("emailMassMonosSearch");
+  const emailMassMonosCount = document.getElementById("emailMassMonosCount");
+  const emailMassSelectAll = document.getElementById("emailMassMonosSelectAll");
+  const emailMassSelectNone = document.getElementById("emailMassMonosSelectNone");
+
+  // --- Timepicker ---
+  let emailMassTimePicker = null;
+  if (emailMassTimeInput && window.AirDatepicker) {
+    emailMassTimePicker = new AirDatepicker(emailMassTimeInput, {
+      onlyTimepicker: true,
+      timepicker: true,
+      locale: airDatepickerLocaleEs,
+      timeFormat: "HH:mm",
+      selectedDates: [new Date(2000, 0, 1, 8, 0)],
+      onSelect: ({ date }) => {
+        const d = Array.isArray(date) ? date[0] : date;
+        if (d) {
+          const hh = String(d.getHours()).padStart(2, "0");
+          const mm = String(d.getMinutes()).padStart(2, "0");
+          emailMassTimeInput.value = hh + ":" + mm;
+        }
+      },
+    });
+    emailMassTimeInput.value = "08:00";
+  }
+
+  function getEmailMassTime() {
+    const val = (emailMassTimeInput ? emailMassTimeInput.value : "08:00") || "08:00";
+    const parts = val.split(":");
+    return { hour: parseInt(parts[0], 10) || 8, minute: parseInt(parts[1], 10) || 0 };
+  }
+
+  function setEmailMassTime(hour, minute) {
+    const hh = String(hour).padStart(2, "0");
+    const mm = String(minute).padStart(2, "0");
+    if (emailMassTimeInput) emailMassTimeInput.value = hh + ":" + mm;
+    if (emailMassTimePicker) {
+      emailMassTimePicker.selectDate(new Date(2000, 0, 1, hour, minute));
+    }
+  }
+
+  // --- Toggle widget de monos segun monos_mode ---
+  function applyEmailMassMode(mode) {
+    if (mode === "todos") {
+      if (emailMassCategoriaWrapper) emailMassCategoriaWrapper.hidden = true;
+      if (emailMassManualWrapper) emailMassManualWrapper.style.display = "none";
+    } else if (mode === "por_categoria") {
+      if (emailMassCategoriaWrapper) emailMassCategoriaWrapper.hidden = false;
+      if (emailMassManualWrapper) emailMassManualWrapper.style.display = "none";
+    } else {
+      if (emailMassCategoriaWrapper) emailMassCategoriaWrapper.hidden = true;
+      if (emailMassManualWrapper) emailMassManualWrapper.style.display = "";
+    }
+  }
+  if (emailMassForm) {
+    emailMassForm.querySelectorAll("input[name='emailmass_monos_mode']").forEach(radio => {
+      radio.addEventListener("change", () => {
+        if (radio.checked) applyEmailMassMode(radio.value);
+      });
+    });
+  }
+
+  // --- Busqueda y contador de monos ---
+  function updateEmailMassMonosCount() {
+    if (!emailMassMonosCount || !emailMassForm) return;
+    const checked = emailMassForm.querySelectorAll("input[name='emailmass_monos']:checked").length;
+    emailMassMonosCount.textContent = checked;
+  }
+  if (emailMassMonosSearch && emailMassMonosList) {
+    emailMassMonosSearch.addEventListener("input", () => {
+      const q = emailMassMonosSearch.value.toLowerCase().trim();
+      emailMassMonosList.querySelectorAll("[data-emailmass-mono]").forEach(item => {
+        const searchVal = item.getAttribute("data-emailmass-name") || "";
+        if (!q || searchVal.includes(q)) {
+          item.removeAttribute("hidden");
+        } else {
+          item.setAttribute("hidden", "");
+        }
+      });
+    });
+  }
+  if (emailMassSelectAll) {
+    emailMassSelectAll.addEventListener("click", () => {
+      emailMassForm.querySelectorAll("input[name='emailmass_monos']").forEach(cb => {
+        if (!cb.closest(".checklist__item").hasAttribute("hidden")) cb.checked = true;
+      });
+      updateEmailMassMonosCount();
+    });
+  }
+  if (emailMassSelectNone) {
+    emailMassSelectNone.addEventListener("click", () => {
+      emailMassForm.querySelectorAll("input[name='emailmass_monos']").forEach(cb => cb.checked = false);
+      updateEmailMassMonosCount();
+    });
+  }
+  if (emailMassMonosList) {
+    emailMassMonosList.addEventListener("change", (e) => {
+      if (e.target && e.target.matches("input[name='emailmass_monos']")) {
+        updateEmailMassMonosCount();
+      }
+    });
+  }
+
+  // --- Toggle send_report -> mostrar/ocultar campo email ---
+  if (emailMassSendReport) {
+    emailMassSendReport.addEventListener("change", () => {
+      if (emailMassReportEmailField) {
+        emailMassReportEmailField.style.display = emailMassSendReport.checked ? "" : "none";
+      }
+    });
+  }
+
+  function openEmailMassModal() {
+    if (emailMassModal) {
+      emailMassModal.classList.add("is-open");
+      updateBodyScroll();
+    }
+  }
+
+  function resetEmailMassForm() {
+    if (!emailMassForm) return;
+    emailMassForm.reset();
+    document.getElementById("emailMassSchedId").value = "";
+    if (emailMassDaysInput) emailMassDaysInput.value = "";
+    setEmailMassTime(8, 0);
+    if (emailMassLookback) emailMassLookback.value = "365";
+    if (emailMassSendReport) emailMassSendReport.checked = true;
+    if (emailMassReportEmailField) emailMassReportEmailField.style.display = "";
+    if (emailMassReportEmail) emailMassReportEmail.value = "";
+    if (emailMassCategoriaSelect) emailMassCategoriaSelect.value = "";
+    if (emailMassMonosSearch) emailMassMonosSearch.value = "";
+    emailMassForm.querySelectorAll("input[name='emailmass_monos']").forEach(cb => {
+      cb.checked = false;
+      const li = cb.closest(".checklist__item");
+      if (li) li.removeAttribute("hidden");
+    });
+    // Default mode: manual
+    emailMassForm.querySelectorAll("input[name='emailmass_monos_mode']").forEach(radio => {
+      radio.checked = (radio.value === "manual");
+    });
+    applyEmailMassMode("manual");
+    updateEmailMassMonosCount();
+  }
+
+  function fillEmailMassForm(sched) {
+    document.getElementById("emailMassSchedId").value = sched.id || "";
+    document.getElementById("emailMassSchedName").value = sched.name || "";
+    if (emailMassDaysInput) {
+      // sched.days_of_month es lista; reconstruir CSV
+      const days = Array.isArray(sched.days_of_month) ? sched.days_of_month : [];
+      emailMassDaysInput.value = days.join(",");
+    }
+    setEmailMassTime(sched.hour ?? 8, sched.minute ?? 0);
+    if (emailMassLookback) emailMassLookback.value = sched.lookback_days ?? 365;
+    if (emailMassSendReport) emailMassSendReport.checked = sched.send_report !== false;
+    if (emailMassReportEmail) emailMassReportEmail.value = sched.report_email || "";
+    if (emailMassReportEmailField) {
+      emailMassReportEmailField.style.display = sched.send_report !== false ? "" : "none";
+    }
+
+    const mode = sched.monos_mode || "manual";
+    emailMassForm.querySelectorAll("input[name='emailmass_monos_mode']").forEach(radio => {
+      radio.checked = (radio.value === mode);
+    });
+    applyEmailMassMode(mode);
+
+    if (emailMassCategoriaSelect) {
+      emailMassCategoriaSelect.value = sched.categoria_id ? String(sched.categoria_id) : "";
+    }
+
+    const monoIds = (sched.monotributista_ids || []).map(String);
+    emailMassForm.querySelectorAll("input[name='emailmass_monos']").forEach(cb => {
+      cb.checked = monoIds.includes(cb.value);
+    });
+    if (emailMassMonosSearch) emailMassMonosSearch.value = "";
+    emailMassForm.querySelectorAll("[data-emailmass-mono]").forEach(li => li.removeAttribute("hidden"));
+    updateEmailMassMonosCount();
+  }
+
+  if (emailMassNewBtn) {
+    emailMassNewBtn.addEventListener("click", () => {
+      resetEmailMassForm();
+      if (emailMassTitle) emailMassTitle.textContent = "Nuevo envio programado";
+      openEmailMassModal();
+    });
+  }
+
+  // Edit
+  document.querySelectorAll("[data-emailmass-edit]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      try {
+        const sched = JSON.parse(btn.dataset.emailmassEdit);
+        resetEmailMassForm();
+        fillEmailMassForm(sched);
+        if (emailMassTitle) emailMassTitle.textContent = "Editar envio programado";
+        openEmailMassModal();
+      } catch (e) {
+        console.error("Error parsing email-mass schedule data", e);
+      }
+    });
+  });
+
+  // Toggle activo/pausado
+  document.querySelectorAll("[data-emailmass-toggle]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.emailmassToggle;
+      try {
+        const resp = await fetch("/email-mass-schedule/toggle", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+          showFlash(data.error || "Error al cambiar estado.", "error");
+          return;
+        }
+        showFlash(data.is_active ? "Envio activado." : "Envio pausado.", "success");
+        setTimeout(() => location.reload(), 600);
+      } catch (e) {
+        showFlash("Error de red.", "error");
+      }
+    });
+  });
+
+  // Run now (con confirmacion reforzada)
+  document.querySelectorAll("[data-emailmass-run]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const id = btn.dataset.emailmassRun;
+      const card = btn.closest(".rpa-schedule-card");
+      const monosCount = card ? parseInt(card.dataset.emailmassMonosCount || "0", 10) : 0;
+      openConfirm(
+        "Esto va a procesar RPA y mandar emails REALES a " + monosCount + " cliente(s). Estas seguro?",
+        async () => {
+          try {
+            const resp = await fetch("/email-mass-schedule/run-now", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ id }),
+            });
+            const data = await resp.json();
+            if (!resp.ok) {
+              showFlash(data.error || "No se pudo iniciar el envio.", "error");
+              return;
+            }
+            showFlash("Envio iniciado. Recibiras un email con el reporte al finalizar.", "success");
+            setTimeout(() => location.reload(), 800);
+          } catch (e) {
+            showFlash("Error de red.", "error");
+          }
+        }
+      );
+    });
+  });
+
+  // Delete
+  document.querySelectorAll("[data-emailmass-delete]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const id = btn.dataset.emailmassDelete;
+      openConfirm("Eliminar este envio programado?", async () => {
+        try {
+          const resp = await fetch("/email-mass-schedule/delete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id }),
+          });
+          const data = await resp.json();
+          if (!resp.ok) {
+            showFlash(data.error || "Error al eliminar.", "error");
+            return;
+          }
+          showFlash("Envio programado eliminado.", "success");
+          setTimeout(() => location.reload(), 600);
+        } catch (e) {
+          showFlash("Error de red.", "error");
+        }
+      });
+    });
+  });
+
+  // Save form
+  if (emailMassForm) {
+    emailMassForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const id = document.getElementById("emailMassSchedId").value;
+      const name = document.getElementById("emailMassSchedName").value.trim();
+      const daysCsv = (emailMassDaysInput.value || "").trim();
+      const time = getEmailMassTime();
+      const sendReport = emailMassSendReport ? emailMassSendReport.checked : true;
+      const reportEmail = emailMassReportEmail ? emailMassReportEmail.value.trim() : "";
+      const lookbackDays = parseInt((emailMassLookback || {}).value, 10) || 365;
+      const modeRadio = emailMassForm.querySelector("input[name='emailmass_monos_mode']:checked");
+      const mode = modeRadio ? modeRadio.value : "manual";
+      const categoriaId = emailMassCategoriaSelect ? emailMassCategoriaSelect.value : "";
+      const monoIds = Array.from(
+        emailMassForm.querySelectorAll("input[name='emailmass_monos']:checked")
+      ).map(cb => parseInt(cb.value, 10));
+
+      const payload = {
+        name,
+        days_of_month: daysCsv,
+        hour: time.hour,
+        minute: time.minute,
+        monos_mode: mode,
+        categoria_id: mode === "por_categoria" ? (categoriaId || null) : null,
+        monotributista_ids: mode === "manual" ? monoIds : [],
+        lookback_days: lookbackDays,
+        send_report: sendReport,
+        report_email: reportEmail,
+      };
+      if (id) payload.id = parseInt(id, 10);
+
+      try {
+        const resp = await fetch("/email-mass-schedule/save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+          showFlash(data.error || "Error al guardar.", "error");
+          return;
+        }
+        showFlash("Envio programado guardado.", "success");
+        if (emailMassModal) {
+          closeModal(emailMassModal);
+        }
+        setTimeout(() => location.reload(), 600);
+      } catch (e) {
+        showFlash("Error de red.", "error");
       }
     });
   }
