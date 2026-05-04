@@ -267,10 +267,10 @@ def send_rpa_schedule_report(schedule_id: int, batch_id: str) -> None:
 
         body_html = f"""
         <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
-            <h2 style="color:#242c4f;">Reporte de proceso RPA programado</h2>
+            <h2 style="color:#242c4f;">Reporte de actualizacion masiva programada</h2>
             <table style="width:100%;margin-bottom:16px;">
                 <tr>
-                    <td><strong>Programacion:</strong></td>
+                    <td><strong>Actualizacion masiva:</strong></td>
                     <td>{schedule.name}</td>
                 </tr>
                 <tr>
@@ -299,7 +299,7 @@ def send_rpa_schedule_report(schedule_id: int, batch_id: str) -> None:
         </div>
         """
 
-        subject = f"Reporte RPA - {schedule.name} - {now.strftime('%d/%m/%Y %H:%M')}"
+        subject = f"Reporte de actualizacion masiva - {schedule.name} - {now.strftime('%d/%m/%Y %H:%M')}"
         try:
             ok, msg = send_email(
                 to=report_email,
