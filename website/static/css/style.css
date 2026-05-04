@@ -407,6 +407,24 @@ button.stat:focus-visible {
   color: var(--navy-40);
 }
 
+.pdf-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border: 2px solid var(--blue);
+  border-radius: 10px;
+  color: var(--blue);
+  text-decoration: none;
+  transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+.pdf-icon-btn:hover {
+  background: var(--blue);
+  color: #fff;
+}
+
 .panel__hint {
   color: var(--navy-40);
   font-size: 13px;
@@ -549,6 +567,14 @@ button.stat:focus-visible {
   overflow: hidden;
 }
 
+.config-collapse {
+  margin-bottom: 12px;
+}
+
+.config-collapse:last-child {
+  margin-bottom: 0;
+}
+
 .rpa-collapse summary {
   padding: 12px 16px;
   cursor: pointer;
@@ -682,6 +708,32 @@ button.stat:focus-visible {
 
 .checklist__item[hidden] {
   display: none;
+}
+
+.var-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--mint);
+  color: var(--navy-90);
+  border: 1px solid transparent;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.var-chip:hover {
+  background: #c4e4eb;
+  border-color: var(--sky);
+}
+
+.var-chip:active {
+  background: var(--sky);
+  color: var(--white);
 }
 
 .field__search {
@@ -938,7 +990,27 @@ button.stat:focus-visible {
 }
 
 .table__row--mono {
-  grid-template-columns: 2.6fr 1.4fr 1.4fr 0.7fr 0.8fr 0.6fr;
+  grid-template-columns: 2.2fr 1.2fr 1.2fr 1.6fr 0.7fr 0.8fr 0.6fr;
+}
+
+.table__row--monotributistas {
+  grid-template-columns: 24% 14% 1fr 8% 14% 10%;
+}
+
+.table__row--envio-masivo {
+  grid-template-columns: 40px 30% 18% 1fr;
+}
+
+.monos-email-cell {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.monos-email-cell--empty {
+  color: var(--navy-40);
+  font-style: italic;
 }
 
 .table__row--facturas {
@@ -952,6 +1024,16 @@ button.stat:focus-visible {
 
 .table__row--usuarios {
   grid-template-columns: 1fr 1.5fr 1fr 0.8fr 0.8fr;
+}
+
+.table__row--detalle {
+  grid-template-columns: 1.4fr 0.6fr 1fr 1fr 1fr 1fr;
+  font-size: 13px;
+}
+
+.table__foot {
+  border-top: 2px solid #d8dce6;
+  background: #f0f2f7;
 }
 
 .table__row--imports {
@@ -1439,6 +1521,16 @@ input[type="date"][data-air-picker="true"]::-webkit-calendar-picker-indicator {
   animation: rise 0.6s ease-out;
 }
 
+.month-card {
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.month-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(20, 28, 52, 0.10);
+}
+
 .month-card span {
   font-size: 12px;
   color: var(--navy-40);
@@ -1495,6 +1587,31 @@ input[type="date"][data-air-picker="true"]::-webkit-calendar-picker-indicator {
 .flash--success {
   background: #dff5e5;
   color: #276749;
+}
+
+.flash--csv_import {
+  background: #e6f0ff;
+  color: var(--blue);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.flash__close {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  margin-left: 12px;
+  padding: 0 4px;
+  opacity: 0.7;
+}
+
+.flash__close:hover {
+  opacity: 1;
 }
 
 .login {
@@ -1672,6 +1789,10 @@ input[type="date"][data-air-picker="true"]::-webkit-calendar-picker-indicator {
   flex-direction: column;
 }
 
+.modal__content--lg {
+  width: min(900px, 100%) !important;
+}
+
 .modal--wide .table {
   flex: 1;
   overflow-y: auto;
@@ -1696,6 +1817,22 @@ input[type="date"][data-air-picker="true"]::-webkit-calendar-picker-indicator {
   justify-content: flex-end;
   gap: 12px;
   margin-top: 18px;
+}
+
+.prompt-input {
+  width: 100%;
+  border: 1px solid #d8dce6;
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-family: inherit;
+  font-size: 14px;
+  margin-top: 8px;
+  box-sizing: border-box;
+}
+
+.prompt-input:focus {
+  outline: none;
+  border-color: var(--celeste, #53afc0);
 }
 
 .detail-grid {
@@ -2005,6 +2142,7 @@ input[type="date"][data-air-picker="true"]::-webkit-calendar-picker-indicator {
   }
 
   .table__row--mono,
+  .table__row--monotributistas,
   .table__row--facturas,
   .table__row--config,
   .table__row--topes,

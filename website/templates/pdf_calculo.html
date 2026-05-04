@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    @page {
+      size: A4 portrait;
+      margin: 15mm 18mm;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: "Liberation Sans", Arial, Helvetica, sans-serif;
+      font-size: 10pt;
+      color: #1a1a1a;
+      line-height: 1.4;
+    }
+
+    /* ── Header ── */
+    .header {
+      margin-bottom: 16px;
+      border-bottom: 2px solid #242c4f;
+      padding-bottom: 10px;
+    }
+
+    .header__name {
+      font-size: 16pt;
+      font-weight: bold;
+      color: #242c4f;
+      margin-bottom: 4px;
+    }
+
+    .header__meta {
+      font-size: 9pt;
+      color: #555;
+    }
+
+    .header__meta span {
+      margin-right: 16px;
+    }
+
+    /* ── Summary ── */
+    .summary-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 16px;
+    }
+
+    .summary-table td {
+      width: 33.33%;
+      padding: 10px 12px;
+      vertical-align: top;
+      border: 1px solid #e0e0e0;
+    }
+
+    .summary-table .label {
+      font-size: 8pt;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .summary-table .value {
+      font-size: 12pt;
+      font-weight: bold;
+      display: block;
+    }
+
+    .summary-table .tope {
+      font-size: 8pt;
+      color: #888;
+      display: block;
+      margin-top: 2px;
+    }
+
+    /* ── Estado colors ── */
+    .estado--sube {
+      background: #ffe4e6;
+      border-left: 4px solid #f43f5e;
+    }
+
+    .estado--baja {
+      background: #fef9c3;
+      border-left: 4px solid #eab308;
+    }
+
+    .estado--exclusion {
+      background: #fee2e2;
+      border-left: 4px solid #dc2626;
+    }
+
+    .estado--mantiene {
+      background: #dcfce7;
+      border-left: 4px solid #22c55e;
+    }
+
+    /* ── Month grid ── */
+    .section-title {
+      font-size: 11pt;
+      font-weight: bold;
+      color: #242c4f;
+      margin-bottom: 8px;
+      margin-top: 16px;
+    }
+
+    .month-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 16px;
+    }
+
+    .month-table td {
+      width: 33.33%;
+      padding: 8px 10px;
+      border: 1px solid #e0e0e0;
+    }
+
+    .month-table .month-label {
+      font-size: 8pt;
+      color: #666;
+      display: block;
+    }
+
+    .month-table .month-value {
+      font-size: 10pt;
+      font-weight: bold;
+      display: block;
+      margin-top: 2px;
+    }
+
+    /* ── Margins ── */
+    .margins-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 16px;
+    }
+
+    .margins-table td {
+      padding: 8px 12px;
+      border: 1px solid #e0e0e0;
+    }
+
+    .margins-table .margin-label {
+      color: #555;
+      width: 60%;
+    }
+
+    .margins-table .margin-value {
+      font-weight: bold;
+      text-align: right;
+    }
+
+    /* ── Footer ── */
+    .footer {
+      margin-top: 24px;
+      padding-top: 8px;
+      border-top: 1px solid #ccc;
+      text-align: center;
+      font-size: 9pt;
+      color: #888;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header__name">{{ razon_social }}</div>
+    <div class="header__meta">
+      <span>CUIT: {{ cuit }}</span>
+      <span>Periodo: {{ periodo_label }}</span>
+      <span>Actualizado al: {{ last_rpa_date }}</span>
+      <span>Generado: {{ generated_at }}</span>
+    </div>
+  </div>
+
+  <!-- Summary -->
+  <table class="summary-table">
+    <tr>
+      <td>
+        <span class="label">Categoria actual</span>
+        <span class="value">{{ detalle.categoria_actual }}</span>
+        <span class="tope">Tope: {{ detalle.tope_actual }}</span>
+      </td>
+      <td class="estado--{{ detalle.estado_categoria }}">
+        <span class="label">Categoria corresponde</span>
+        <span class="value">{{ detalle.categoria_corresponde }}</span>
+        <span class="tope">Tope: {{ detalle.tope_corresponde }}</span>
+      </td>
+      <td>
+        <span class="label">Total 12 meses</span>
+        <span class="value">{{ detalle.total_12m }}</span>
+      </td>
+    </tr>
+  </table>
+
+  <!-- Month grid -->
+  <div class="section-title">Facturacion mensual</div>
+  <table class="month-table">
+    {% set months = detalle.mensual.items() | list %}
+    {% for row in range(4) %}
+    <tr>
+      {% for col in range(3) %}
+        {% set idx = row * 3 + col %}
+        {% if idx < months | length %}
+          {% set mes, total = months[idx] %}
+          <td>
+            <span class="month-label">{{ mes }}</span>
+            <span class="month-value">{{ total }}</span>
+          </td>
+        {% else %}
+          <td></td>
+        {% endif %}
+      {% endfor %}
+    </tr>
+    {% endfor %}
+  </table>
+
+  <!-- Margins -->
+  <div class="section-title">Margenes</div>
+  <table class="margins-table">
+    <tr>
+      <td class="margin-label">Margen de exclusion</td>
+      <td class="margin-value">{{ detalle.margen_exclusion }}</td>
+    </tr>
+    <tr>
+      <td class="margin-label">Margen de categoria ({{ detalle.categoria_actual }})</td>
+      <td class="margin-value">{{ detalle.margen_categoria }}</td>
+    </tr>
+    {% if detalle.margen_siguiente %}
+    <tr>
+      <td class="margin-label">
+        {% if detalle.estado_categoria == 'sube' %}
+          Margen de siguiente categoria ({{ detalle.categoria_corresponde }})
+        {% elif detalle.estado_categoria == 'baja' %}
+          Margen para mantener categoria ({{ detalle.categoria_corresponde }})
+        {% endif %}
+      </td>
+      <td class="margin-value">{{ detalle.margen_siguiente }}</td>
+    </tr>
+    {% endif %}
+  </table>
+
+  <!-- Footer -->
+  <div class="footer">
+    Desarrollado por <a href="https://adain.dev" style="color: inherit; text-decoration: none; font-weight: 600;">ADΛIN.DEV</a> &mdash; {{ generated_at }}
+  </div>
+
+</body>
+</html>

@@ -55,7 +55,14 @@
       <div class="flash-stack">
         {% for category, message in flash_messages %}
           {% if not (open_modal == "monotributista" and category == "error") %}
-            <div class="flash flash--{{ category }}">{{ message }}</div>
+            {% if category == "csv_import" %}
+              <div class="flash flash--csv_import" data-flash-persistent="true">
+                <span>{{ message }}</span>
+                <button type="button" class="flash__close" data-flash-close aria-label="Cerrar">&times;</button>
+              </div>
+            {% else %}
+              <div class="flash flash--{{ category }}">{{ message }}</div>
+            {% endif %}
           {% endif %}
         {% endfor %}
       </div>
@@ -72,6 +79,20 @@
       <div class="modal__actions">
         <button class="ghost-button" type="button" data-close>Cancelar</button>
         <button class="primary" type="button" id="confirmOk">Confirmar</button>
+      </div>
+    </div>
+  </div>
+  <div class="modal modal--confirm" id="promptModal" aria-hidden="true">
+    <div class="modal__content">
+      <div class="modal__header">
+        <h3 id="promptTitle">Ingresar valor</h3>
+        <button class="modal__close" type="button" data-close>&times;</button>
+      </div>
+      <p id="promptMessage">Ingresá un valor</p>
+      <input type="text" id="promptInput" class="prompt-input" />
+      <div class="modal__actions">
+        <button class="ghost-button" type="button" data-close>Cancelar</button>
+        <button class="primary" type="button" id="promptOk">Aceptar</button>
       </div>
     </div>
   </div>
@@ -93,6 +114,73 @@
       confirmModal.setAttribute("aria-hidden", "true");
       pendingAction = null;
     };
+
+    const promptModal = document.getElementById("promptModal");
+    const promptMessage = document.getElementById("promptMessage");
+    const promptTitle = document.getElementById("promptTitle");
+    const promptInput = document.getElementById("promptInput");
+    const promptOk = document.getElementById("promptOk");
+    let promptResolve = null;
+    let promptKeyHandler = null;
+
+    const closePrompt = (value) => {
+      promptModal.classList.remove("is-open");
+      promptModal.setAttribute("aria-hidden", "true");
+      if (promptKeyHandler) {
+        document.removeEventListener("keydown", promptKeyHandler);
+        promptKeyHandler = null;
+      }
+      const resolver = promptResolve;
+      promptResolve = null;
+      if (resolver) {
+        resolver(value);
+      }
+    };
+
+    const openPrompt = (message, options) => {
+      const opts = options || {};
+      return new Promise((resolve) => {
+        if (promptResolve) {
+          const previous = promptResolve;
+          promptResolve = null;
+          previous(null);
+        }
+        promptTitle.textContent = opts.title || "Ingresar valor";
+        promptMessage.textContent = message || "Ingresá un valor";
+        promptInput.type = opts.inputType || "text";
+        promptInput.placeholder = opts.placeholder || "";
+        promptInput.value = opts.defaultValue || "";
+        promptResolve = resolve;
+        promptModal.setAttribute("aria-hidden", "false");
+        promptModal.classList.add("is-open");
+        setTimeout(() => promptInput.focus(), 50);
+
+        promptKeyHandler = (event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            closePrompt(promptInput.value);
+          } else if (event.key === "Escape") {
+            event.preventDefault();
+            closePrompt(null);
+          }
+        };
+        document.addEventListener("keydown", promptKeyHandler);
+      });
+    };
+
+    promptOk.addEventListener("click", () => {
+      closePrompt(promptInput.value);
+    });
+
+    promptModal.addEventListener("click", (event) => {
+      if (event.target === promptModal) {
+        closePrompt(null);
+      }
+    });
+
+    promptModal.querySelectorAll("[data-close]").forEach((button) => {
+      button.addEventListener("click", () => closePrompt(null));
+    });
 
     document.addEventListener("click", (event) => {
       const link = event.target.closest("a[data-confirm]");
@@ -152,6 +240,9 @@
 
     const flashSuccess = document.querySelectorAll(".flash--success");
     flashSuccess.forEach((message) => {
+      if (message.dataset.flashPersistent === "true") {
+        return;
+      }
       setTimeout(() => {
         message.classList.add("is-hidden");
       }, 2000);
@@ -161,12 +252,28 @@
     });
     const modalErrors = document.querySelectorAll(".flash--modal");
     modalErrors.forEach((message) => {
+      if (message.dataset.flashPersistent === "true") {
+        return;
+      }
       setTimeout(() => {
         message.classList.add("is-hidden");
       }, 4000);
       setTimeout(() => {
         message.remove();
       }, 4600);
+    });
+
+    document.addEventListener("click", (event) => {
+      const closeBtn = event.target.closest("[data-flash-close]");
+      if (!closeBtn) {
+        return;
+      }
+      const flashEl = closeBtn.closest(".flash");
+      if (!flashEl) {
+        return;
+      }
+      flashEl.classList.add("is-hidden");
+      setTimeout(() => flashEl.remove(), 350);
     });
 
     (() => {

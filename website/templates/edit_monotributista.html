@@ -31,6 +31,10 @@
             {% endfor %}
           </select>
         </label>
+        <label class="field">
+          Email
+          <input type="email" name="email" value="{{ form_values.get('email', monotributista.email or '') if form_values else (monotributista.email or '') }}" placeholder="email@ejemplo.com">
+        </label>
       </div>
       <div class="form-actions">
         <button class="primary" type="submit">Guardar cambios</button>
