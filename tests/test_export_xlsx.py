@@ -237,3 +237,24 @@ def test_export_xlsx_nc_row_has_negative_importe(client, app):
             found_negative = True
 
     assert found_negative, "No NC row found in the xlsx"
+
+
+# ---------------------------------------------------------------------------
+# T2g — _slug_for_filename: accents stripped, special chars collapsed, CUIT fallback
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "razon_social, cuit, expected",
+    [
+        ("Panadería La Ñata S.A.", "20123456789", "panaderia_la_nata_s_a"),
+        ("   ", "20123456789", "20123456789"),          # blank -> cuit (slugified)
+        (None, "20-12345678-9", "20_12345678_9"),       # None -> cuit, non-alnum collapsed
+        ("!!!", "20123456789", "20123456789"),          # all-symbols slug empty -> cuit digits
+        ("ACME", "20123456789", "acme"),
+    ],
+)
+def test_slug_for_filename(razon_social, cuit, expected):
+    """Slug strips accents, collapses non-alnum, and falls back to CUIT digits."""
+    from website.views import _slug_for_filename
+
+    assert _slug_for_filename(razon_social, cuit) == expected
