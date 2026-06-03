@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import csv
 import html
+import re
+import unicodedata
 from collections import OrderedDict
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -73,6 +75,93 @@ MONOTRIBUTISTA_IMPORT_REQUIRED_HEADERS = (
     "categoria_actual",
 )
 MONOTRIBUTISTA_IMPORT_OPTIONAL_HEADERS = ("email",)
+
+XLSX_MIMETYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def _slug_for_filename(razon_social: str | None, cuit: str) -> str:
+    """Return a filesystem-safe ASCII slug for use in Content-Disposition filenames.
+
+    Rules (D6):
+    1. Use razon_social; if blank fall back to cuit digits.
+    2. NFKD normalize to strip accents.
+    3. Lowercase; collapse non-[a-z0-9] runs to single '_'; strip edges.
+    4. If result empty fall back to digits-only cuit.
+    """
+    source = (razon_social or "").strip() or cuit
+    normalized = unicodedata.normalize("NFKD", source).encode("ascii", "ignore").decode("ascii")
+    slug = re.sub(r"[^a-z0-9]+", "_", normalized.lower()).strip("_")
+    if not slug:
+        slug = re.sub(r"\D", "", cuit)
+    return slug or re.sub(r"\D", "", cuit)
+
+
+def build_detalle_xlsx(items: list[dict], year: int, month: int) -> bytes:
+    """Build an in-memory .xlsx workbook from calcular_detalle_mes output.
+
+    Returns raw bytes suitable for send_file(io.BytesIO(bytes), ...).
+
+    Layout:
+    - Row 1: bold header row.
+    - Rows 2..N+1: one data row per item (str cols A-D, numeric E-F with #,##0.00 format).
+    - Empty month: row 2 = note in A2; total row immediately after.
+    - Last row: E = "Total" (bold), F = sum of importe_mes (numeric, formatted, bold).
+    Column widths: A=18, B=8, C=12, D=12, E=16, F=16.
+    """
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+
+    NUMFMT = "#,##0.00"
+    COL_WIDTHS = [18, 8, 12, 12, 16, 16]
+    HEADERS = ["Nro Comprobante", "Tipo", "Desde", "Hasta", "Importe Total", "Importe Mes"]
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Detalle"
+
+    # Header row
+    ws.append(HEADERS)
+    for col_idx, cell in enumerate(ws[1], start=1):
+        cell.font = Font(bold=True)
+
+    total = 0.0
+    if not items:
+        ws.append(["Sin comprobantes para este mes", "", "", "", "", ""])
+    else:
+        for item in items:
+            importe_total = float(item["importe_total"])
+            importe_mes = float(item["importe_mes"])
+            ws.append([
+                item["numero_comp"],
+                item["tipo_comp"],
+                item["fecha_desde"],
+                item["fecha_hasta"],
+                importe_total,
+                importe_mes,
+            ])
+            row = ws.max_row
+            ws.cell(row, 5).number_format = NUMFMT
+            ws.cell(row, 6).number_format = NUMFMT
+            total += importe_mes
+
+    total = round(total, 2)
+
+    # Total row
+    ws.append(["", "", "", "", "Total", total])
+    total_row = ws.max_row
+    ws.cell(total_row, 5).font = Font(bold=True)
+    total_cell = ws.cell(total_row, 6)
+    total_cell.font = Font(bold=True)
+    total_cell.number_format = NUMFMT
+
+    # Column widths
+    col_letters = ["A", "B", "C", "D", "E", "F"]
+    for letter, width in zip(col_letters, COL_WIDTHS):
+        ws.column_dimensions[letter].width = width
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
 
 
 def parse_date(value: str | None):
@@ -955,6 +1044,30 @@ def api_calculo_mes(mono_id, year, month):
         anchor = date.today().replace(day=1)
     result = calcular_detalle_mes(monotributista, anchor, year, month)
     return jsonify(result)
+
+
+@main_bp.get("/api/calculo/<int:mono_id>/mes/<int:year>/<int:month>/export.xlsx")
+@login_required
+def export_calculo_mes_xlsx(mono_id, year, month):
+    # Intentional divergence from api_calculo_mes (which returns jsonify([])):
+    # for a file-download endpoint a missing mono_id must return 404 (spec R7).
+    mono = db.session.get(Monotributista, mono_id)
+    if not mono:
+        abort(404)
+    anchor_param = request.args.get("anchor")
+    anchor = parse_anchor(anchor_param) if anchor_param else None
+    if not anchor:
+        anchor = date.today().replace(day=1)
+    items = calcular_detalle_mes(mono, anchor, year, month)
+    xlsx_bytes = build_detalle_xlsx(items, year, month)
+    slug = _slug_for_filename(mono.razon_social, mono.cuit)
+    filename = f"detalle_{slug}_{year:04d}-{month:02d}.xlsx"
+    return send_file(
+        io.BytesIO(xlsx_bytes),
+        mimetype=XLSX_MIMETYPE,
+        as_attachment=True,
+        download_name=filename,
+    )
 
 
 @main_bp.post("/monotributistas/create")
