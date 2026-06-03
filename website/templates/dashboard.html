@@ -1503,7 +1503,10 @@
   <div class="modal__content">
     <div class="modal__header">
       <h3 data-detalle-title>Detalle</h3>
-      <button class="modal__close" type="button" data-close>&times;</button>
+      <div class="modal__header-actions">
+        <a data-detalle-export href="#" style="display:none;" class="outline outline--sm">Exportar Excel</a>
+        <button class="modal__close" type="button" data-close>&times;</button>
+      </div>
     </div>
     <div data-detalle-loading style="display:none; text-align:center; padding:40px;">
       Cargando...
@@ -2616,6 +2619,7 @@
   const detalleFooter = detalleModal ? detalleModal.querySelector("[data-detalle-footer]") : null;
   const detalleTotal = detalleModal ? detalleModal.querySelector("[data-detalle-total]") : null;
   const detalleEmpty = detalleModal ? detalleModal.querySelector("[data-detalle-empty]") : null;
+  const detalleExport = detalleModal ? detalleModal.querySelector("[data-detalle-export]") : null;
 
   const formatCurrency = (value) => {
     const num = parseFloat(value);
@@ -2654,6 +2658,7 @@
       if (detalleTable) detalleTable.style.display = "none";
       if (detalleEmpty) detalleEmpty.style.display = "none";
       if (detalleBody) detalleBody.textContent = "";
+      if (detalleExport) detalleExport.style.display = "none";
 
       openModal("detalle-mes");
 
@@ -2666,6 +2671,11 @@
           if (!data || data.length === 0) {
             if (detalleEmpty) detalleEmpty.style.display = "block";
             if (detalleFooter) detalleFooter.style.display = "none";
+            if (detalleExport) {
+              const anchorParam = anchor ? `?anchor=${anchor}` : "";
+              detalleExport.href = `/api/calculo/${monoId}/mes/${year}/${month}/export.xlsx${anchorParam}`;
+              detalleExport.style.display = "";
+            }
             return;
           }
 
@@ -2706,6 +2716,11 @@
           if (detalleTotal) detalleTotal.textContent = formatCurrency(totalMes.toFixed(2));
           if (detalleFooter) detalleFooter.style.display = "";
           if (detalleTable) detalleTable.style.display = "";
+          if (detalleExport) {
+            const anchorParam = anchor ? `?anchor=${anchor}` : "";
+            detalleExport.href = `/api/calculo/${monoId}/mes/${year}/${month}/export.xlsx${anchorParam}`;
+            detalleExport.style.display = "";
+          }
         })
         .catch(() => {
           if (detalleLoading) detalleLoading.style.display = "none";
